@@ -145,12 +145,15 @@ the native origin**; using the S3 endpoint there is the usual gate 7 failure.
 
 ```
                         staging          bucket
-files                       537             537
-bytes                 170534375       170534375
+files                       695             695
+bytes                 208966295       208966295
 difference                                    0
 byte-for-byte spot check   5 of 5 OK   (fixed seed 20260903)
 RESULT                     PASS
 ```
+
+695 = 537 files from the WordPress media library at uploads-relative paths
+(`2020/12/foo.jpg`) plus 158 Instagram stills under `instagram/`.
 
 Reproduce with `python3 tools/reconcile-images.py ./.port-work/b2-staging
 b2:rexdalemobilewash-img` — it exits non-zero on any difference, names every
@@ -175,12 +178,19 @@ key — the master key can delete every other client's bucket. The key value liv
 in `.port-work/b2-key.env` (gitignored, chmod 600) and belongs in the password
 manager.
 
-### Still to do
+The 158 Instagram stills were added after the initial reconciliation. They are
+not the old site's images — they were harvested from the feed — so they went in
+as a separate `rclone copy` under `instagram/`, and the reconciliation above
+covers the whole bucket. They carried no EXIF at all: Instagram strips it
+server-side.
 
-- **The 158 Instagram stills are NOT in the bucket.** They are not the old site's
-  images — they were harvested from the feed — so they sit outside gate 5's
-  reconciliation. They still ship from `public/images/instagram/` in the repo.
-  Worth moving to the bucket for consistency, but it is a separate decision.
+**The eventual swap is a pure base swap.** Bucket keys mirror the repo layout
+under `public/images/`, so `/images/2020/12/foo.jpg` becomes
+`https://img.rexdalemobilewash.ca/2020/12/foo.jpg` and
+`/images/instagram/x.jpg` becomes `https://img.rexdalemobilewash.ca/instagram/x.jpg`.
+Nothing else has to change.
+
+### Still to do
 - **Gate 7** — `img.rexdalemobilewash.ca` as a *proxied* Cloudflare CNAME onto
   `f005.backblazeb2.com`, plus the transform rule that scopes the hostname to
   this one bucket. **Blocked**: the zone is still pending, nameservers at GoDaddy.
