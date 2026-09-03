@@ -1,0 +1,59 @@
+---
+// The site header, taken verbatim from the live site.
+//
+// Every page served one header that differed ONLY in WordPress's active-state
+// classes. `_header.neutral.html` is that markup with the active state stripped
+// out; `applyActive` puts it back for the current page. The transform is verified
+// byte-exact against all 15 captured headers by `npm run verify:header`.
+//
+// Two copies of the menu live in this markup: the desktop nav and the off-canvas
+// mobile nav. Keying off the `menu-item-<id>` class (not the `id` attribute)
+// updates both, which is why the dropdown parent highlights correctly on mobile.
+import template from '../html/_header.neutral.html?raw';
+import navActive from '../nav-active.json';
+
+interface Props {
+  slug: string;
+}
+const { slug } = Astro.props;
+
+const ANCESTOR =
+  'current-menu-ancestor current-menu-parent current_page_parent current_page_ancestor ';
+
+/** Insert `insert` into the class list of any <li> carrying menu-item-<wantId>. */
+function editClass(tag: string, wantId: string, insert: string): string {
+  return tag.replace(/\sclass="([^"]*)"/, (whole, cls: string) => {
+    if (!new RegExp(`\\bmenu-item-${wantId}\\b`).test(cls)) return whole;
+    // WordPress emits the current-* markers BEFORE menu-item-has-children, so a
+    // page that is itself a dropdown parent (who-we-service) orders them that way.
+    const anchor = cls.includes('menu-item-has-children')
+      ? 'menu-item-has-children'
+      : `menu-item-${wantId}`;
+    return ` class="${cls.replace(anchor, insert + anchor)}"`;
+  });
+}
+
+function applyActive(html: string, menuItem: string | null, pageItem: string | null, ancestor: string | null): string {
+  let out = html;
+  if (ancestor) {
+    out = out.replace(/<li[^>]*>/g, (t) => editClass(t, ancestor, ANCESTOR));
+  }
+  if (menuItem) {
+    const mark = `current-menu-item page_item page-item-${pageItem} current_page_item `;
+    out = out.replace(/<li[^>]*>/g, (t) => editClass(t, menuItem, mark));
+    out = out.replace(/<li[^>]*>\s*<a[^>]*>[\s\S]*?<\/a>/g, (li) => {
+      if (!li.includes('current-menu-item')) return li;
+      return li
+        .replace(/(<a\s+href="[^"]*")/, '$1 aria-current="page"')
+        .replace(/(<a[^>]*\sclass="[^"]*?)"/, '$1 active"');
+    });
+  }
+  return out;
+}
+
+const entry = (navActive as Record<string, [string | null, string | null, string | null]>)[slug];
+const [menuItem, pageItem, ancestor] = entry ?? [null, null, null];
+const headerHtml = applyActive(template, menuItem, pageItem, ancestor);
+---
+
+<Fragment set:html={headerHtml} />

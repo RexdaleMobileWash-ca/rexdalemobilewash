@@ -1,0 +1,104 @@
+---
+// The document shell.
+//
+// Stylesheets are emitted in the exact order the live page loaded them, because
+// this design is ~600KB of generated Nicepage CSS whose cascade depends on that
+// order. The per-page sheet (/css/page-<slug>.css) holds the inline <style>
+// blocks the live page carried — its section rules, theme kit, header and footer
+// — hoisted out of the HTML in document order and loaded last, exactly as before.
+//
+// Deliberately NOT carried over from the live site:
+//   * elementor/css/global.css   — returns 404 live, so it styles nothing today
+//   * np-woocommerce base fonts  — declares 'star'/'WooCommerce' @font-face only;
+//                                  no page has any element that uses them
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  slug: string;
+  chrome?: 'nicepage' | 'none';
+  bodyClass: string;
+  title: string;
+  description?: string;
+  canonical?: string;
+  robots?: string;
+  og?: [string, string][];
+  twitter?: [string, string][];
+  jsonld?: string | null;
+  vendor: string[];
+  fonts: string[];
+}
+
+const {
+  slug, chrome = 'nicepage', bodyClass, title, description, canonical,
+  robots, og = [], twitter = [], jsonld, vendor, fonts,
+} = Astro.props;
+
+const FAVICON = '/images/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp';
+const GTM_ID = 'GTM-NMTLRJ63';
+---
+
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    {robots && <meta name="robots" content={robots} />}
+    {canonical && <link rel="canonical" href={canonical} />}
+
+    {og.map(([p, c]) => <meta property={p} content={c} />)}
+    {twitter.map(([n, c]) => <meta name={n} content={c} />)}
+
+    <link rel="icon" href={FAVICON} sizes="32x32" />
+    <link rel="icon" href={FAVICON} sizes="192x192" />
+    <link rel="apple-touch-icon" href={FAVICON} />
+
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin />
+
+    {/* vendor sheets, in live order */}
+    {vendor.map((href) => <link rel="stylesheet" href={href} />)}
+    {fonts.map((href) => <link rel="stylesheet" href={href} media="all" />)}
+    {/* this page's own generated CSS, loaded last as it was inline last */}
+    <link rel="stylesheet" href={`/css/page-${slug}.css`} />
+
+    {jsonld && <script type="application/ld+json" set:html={jsonld} />}
+
+    {/* Google Tag Manager — same container as the live site */}
+    <script is:inline define:vars={{ GTM_ID }}>
+      (function (w, d, s, l, i) {
+        w[l] = w[l] || [];
+        w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+        var f = d.getElementsByTagName(s)[0],
+          j = d.createElement(s),
+          dl = l != 'dataLayer' ? '&l=' + l : '';
+        j.async = true;
+        j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
+        f.parentNode.insertBefore(j, f);
+      })(window, document, 'script', 'dataLayer', GTM_ID);
+    </script>
+  </head>
+
+  <body class={bodyClass} data-bg="">
+    <noscript
+      ><iframe
+        src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
+        height="0"
+        width="0"
+        style="display:none;visibility:hidden"
+        aria-hidden="true"></iframe></noscript
+    >
+
+    {chrome === 'nicepage' && <Header slug={slug} />}
+    <slot />
+    {chrome === 'nicepage' && <Footer />}
+
+    {/* nicepage.js drives the off-canvas menu, the hero carousel and the
+        parallax sections, and it requires jQuery. hello-frontend.min.js is the
+        theme header's menu toggle, used by the two non-Nicepage pages. */}
+    <script is:inline src="/js/jquery.min.js"></script>
+    <script is:inline src="/js/nicepage.js"></script>
+    {chrome === 'none' && <script is:inline src="/js/hello-frontend.min.js" />}
+  </body>
+</html>

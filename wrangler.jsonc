@@ -1,0 +1,18 @@
+{
+  // `name` must match the Worker created at gate 9, exactly, or the build fails.
+  "name": "rexdalemobilewash",
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  }
+  // NOTE: no `main` / `assets.directory` here on purpose.
+  // gate 3's template sets "main": "./dist/_worker.js/index.js", which worked with
+  // the older adapter. @astrojs/cloudflare 14.x builds through @cloudflare/vite-plugin,
+  // which resolves `main` while reading this file — before the build has produced
+  // dist — so a dist path fails the build with "doesn't point to an existing file".
+  // The adapter supplies the entrypoint and the assets directory itself, and writes
+  // the deployable wrangler.json into the build output.
+}

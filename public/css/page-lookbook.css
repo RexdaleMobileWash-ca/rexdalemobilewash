@@ -1,0 +1,18 @@
+/* lookbook — inline CSS as served by the live page, in document order.
+   2 block(s): Nicepage per-section rules, theme kit, header, footer. */
+
+
+
+	.u-header .u-logo-image-1
+	{
+		width:130px !important;
+	}
+	.u-header .u-image-1
+	{
+		width:auto !important;
+		border-radius:50% !important;
+	}
+
+
+
+

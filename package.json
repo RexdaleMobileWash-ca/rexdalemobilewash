@@ -1,0 +1,20 @@
+{
+  "name": "rexdalemobilewash",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "port": "./tools/run-port.sh",
+    "verify": "./tools/verify/run-verify.sh",
+    "verify:header": "python3 tools/verify/verify-header.py",
+    "verify:no-old-host": "./tools/verify/no-old-host.sh",
+    "verify:responsive": "node tools/verify/responsive.cjs"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.0",
+    "astro": "^7.3.1"
+  }
+}

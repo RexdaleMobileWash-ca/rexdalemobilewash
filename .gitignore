@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.env
+.env.production
+.DS_Store
+
+# verification workdir (captured pages are extracted here, plus font cache and screenshots)
+.port-work/

@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""Generate the Astro site from the captured live pages.
+
+Fidelity rules this script enforces:
+  * markup is copied, never retyped
+  * CSS is taken from what the live site actually serves, in document order
+  * no reference may survive that points at rexdalemobilewash.ca (old server)
+"""
+import os as _os
+WORK = _os.environ.get('PORT_WORK') or _os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), '.port-work')
+REPO_ROOT = _os.environ.get('PORT_REPO') or _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+
+import re, os, sys, json, glob, html, hashlib, urllib.request, urllib.error, time, collections
+
+S   = WORK
+REPO= REPO_ROOT
+sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from header_apply import apply_active           # noqa: E402  (proven byte-exact)
+
+CSSMAP   = json.load(open(S+'/css_map.json'))
+HDRMODEL = json.load(open(S+'/header_model.json'))
+NEUTRAL  = open(S+'/header.neutral.html', encoding='utf-8').read()
+
+P = lambda *a: os.path.join(REPO, *a)
+for d in ('src/pages','src/layouts','src/components','src/html','public/css','public/js',
+          'public/images/instagram'):
+    os.makedirs(P(d), exist_ok=True)
+
+# ---------------------------------------------------------------- shared inline CSS
+# These four blocks are byte-identical on every page; they become vendor files so the
+# cascade order is preserved without duplicating them 17 times.
+SHARED_INLINE = {
+    'ba282c0d': 'wp-emoji-styles.css',
+    '804dab74': 'classic-theme-styles.css',
+    'fe255d30': 'wp-global-styles.css',
+    '5783535e': 'core-block-supports.css',
+}
+# Declares only the 'star' and 'WooCommerce' @font-face families. No page contains any
+# element that uses them (verified: 0 occurrences of woocommerce/star markup site-wide),
+# so it is dropped rather than shipping two dead icon fonts.
+DROP_INLINE = {'d88326f7': 'np-woocommerce-base-fonts'}
+
+# ---------------------------------------------------------------- URL rewriting
+INSTA = {}
+def fetch(url, tries=4):
+    for a in range(tries):
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, b''
+        except Exception:
+            if a == tries-1: return 0, b''
+            time.sleep(2**a)
+
+def localize_instagram(text):
+    """Instagram CDN urls are signed and expire. Freeze them into public/images/instagram/."""
+    out = text
+    for raw in sorted(set(re.findall(r'https://scontent[^"\'\s\\)]+', text)), key=len, reverse=True):
+        real = html.unescape(raw)
+        key  = real.split('?')[0]
+        if raw not in INSTA:
+            name = hashlib.md5(key.encode()).hexdigest()[:16] + os.path.splitext(key)[1].split('?')[0]
+            if not name.endswith(('.jpg','.jpeg','.png','.webp','.mp4')): name += '.jpg'
+            dest = P('public/images/instagram', name)
+            if os.path.exists(dest) and os.path.getsize(dest) > 0:
+                INSTA[raw] = '/images/instagram/'+name
+            else:
+                code, data = fetch(real)
+                INSTA[raw] = ('/images/instagram/'+name) if (code == 200 and len(data) > 500) else None
+                if INSTA[raw]: open(dest,'wb').write(data)
+        if INSTA[raw]:
+            out = out.replace(raw, INSTA[raw])
+    return out
+
+def rewrite(text):
+    """Point every old-server reference at this site's own assets."""
+    for host in ('https://www.new.rexdalemobilewash.ca', 'http://www.new.rexdalemobilewash.ca',
+                 'https://new.rexdalemobilewash.ca',      'http://new.rexdalemobilewash.ca',
+                 'https://www.rexdalemobilewash.ca',      'http://www.rexdalemobilewash.ca',
+                 'https://rexdalemobilewash.ca',          'http://rexdalemobilewash.ca'):
+        text = text.replace(host + '/wp-content/uploads/', '/images/')
+    text = localize_instagram(text)
+    # The Smash Balloon plugin's responsive-size blob. It is read only by
+    # sbi-scripts.js, which needs the WordPress AJAX endpoint and so is not
+    # shipped; every URL inside it is a signed Instagram CDN link that expires.
+    # Dead data pointing at soon-to-be-404s, so it goes.
+    text = re.sub(r'\sdata-img-src-set="[^"]*"', '', text)
+    # WordPress gallery metadata naming attachment pages on the dead staging host.
+    # Nothing links to them (the gallery images are not wrapped in anchors), so the
+    # attribute is inert — but it must not ship a reference to a host with no DNS.
+    text = re.sub(r'\sdata-link="https?://(?:www\.)?new\.rexdalemobilewash\.ca[^"]*"', '', text)
+    text = static_instagram(text)
+    # Bootstrap config for WordPress plugins whose JS is not shipped: the CF7 REST
+    # root, Smash Balloon's admin-ajax URL, and a Fast Cache loader that also carried
+    # a nonce. All three name endpoints that will not exist. The Elementor background
+    # lazyload observer is NOT stripped — 4 elements on the ported pages still carry
+    # data-e-bg-lazyload and depend on it.
+    text = re.sub(r'<script[^>]*>\s*var\s+(?:wpcf7|sbiajaxurl|bscSl)\s*=.*?</script>', '',
+                  text, flags=re.S)
+    # Smash Balloon's feed-locator nonce, meaningless without the plugin.
+    text = re.sub(r'\sdata-locatornonce="[^"]*"', '', text)
+    # internal page links -> root-relative
+    for host in ('https://www.rexdalemobilewash.ca', 'http://www.rexdalemobilewash.ca',
+                 'https://rexdalemobilewash.ca',      'http://rexdalemobilewash.ca'):
+        text = text.replace(host + '/', '/').replace(host + '"', '/"')
+    return text
+
+def static_instagram(text):
+    """Make the Instagram grid work without the plugin's JavaScript.
+
+    Smash Balloon ships every tile as a placeholder <img> and swaps in the real
+    photo from data-full-res at runtime; the avatar is painted from
+    data-avatar-url the same way. That script needs the WordPress AJAX endpoint,
+    so it is not shipped here — which would leave a grid of grey placeholders.
+    Point the markup straight at the frozen local images instead.
+    """
+    if 'sb_instagram' not in text:
+        return text
+
+    def fix_tile(m):
+        tile = m.group(0)
+        full = re.search(r'data-full-res="([^"]+)"', tile)
+        if not full:
+            return tile
+        return re.sub(r'(<img[^>]*\ssrc=")[^"]*placeholder\.png(")',
+                      lambda i: i.group(1) + full.group(1) + i.group(2), tile, count=1)
+
+    text = re.sub(r'<a class="sbi_photo".*?</a>', fix_tile, text, flags=re.S)
+
+    # the avatar: .sbi_header_img expects an <img> child (sbi CSS sizes and rounds it)
+    def fix_avatar(m):
+        block = m.group(0)
+        url = re.search(r'data-avatar-url="([^"]+)"', block)
+        if not url or '<img' in block:
+            return block
+        return block + f'<img src="{url.group(1)}" alt="" width="80" height="80">'
+
+    text = re.sub(r'<div class="sbi_header_img"[^>]*>', fix_avatar, text)
+    return text
+
+def rewrite_absolute(text):
+    """For head metadata and JSON-LD: keep the canonical domain, fix asset paths.
+
+    canonical / og:url / schema @ids must stay absolute on the production domain —
+    that is what this site will be. Only the /wp-content/uploads/ asset paths inside
+    them are wrong, because those files live at /images/ here.
+    """
+    PROD = 'https://www.rexdalemobilewash.ca'
+    STAGING = ('https://www.new.rexdalemobilewash.ca', 'http://www.new.rexdalemobilewash.ca',
+               'https://new.rexdalemobilewash.ca',     'http://new.rexdalemobilewash.ca')
+    for host in (PROD, 'http://www.rexdalemobilewash.ca') + STAGING:
+        text = text.replace(host + '/wp-content/uploads/', PROD + '/images/')
+    # The staging host has no DNS record at all; anything still naming it is dead.
+    for host in STAGING:
+        text = text.replace(host, PROD)
+    return text
+
+# ---------------------------------------------------------------- per-page extraction
+STYLE_RE = re.compile(r'<style([^>]*)>(.*?)</style>', re.S)
+LINK_RE  = re.compile(r'<link[^>]*rel=[\'"]stylesheet[\'"][^>]*>')
+
+def css_plan(doc):
+    """Ordered stylesheet plan for one page: vendor hrefs + this page's own inline CSS."""
+    items = []
+    for m in re.finditer(r'<link[^>]*rel=[\'"]stylesheet[\'"][^>]*>|<style([^>]*)>(.*?)</style>', doc, re.S):
+        if m.group(0).startswith('<link'):
+            href = html.unescape(re.search(r'href=[\'"]([^\'"]+)', m.group(0)).group(1))
+            if 'fonts.googleapis.com' in href:
+                items.append(('font', href)); continue
+            local = CSSMAP.get(href, 'MISSING')
+            if local:                    # None => not served live (global.css 404)
+                items.append(('vendor', local))
+            else:
+                items.append(('skip', href))
+        else:
+            body = m.group(2)
+            md5  = hashlib.md5(body.encode()).hexdigest()[:8]
+            if md5 in DROP_INLINE:      items.append(('dropped', md5))
+            elif md5 in SHARED_INLINE:  items.append(('vendor', '/css/vendor/'+SHARED_INLINE[md5]))
+            else:                       items.append(('inline', body))
+    return items
+
+def head_meta(doc):
+    g = lambda p, d='': (re.search(p, doc, re.S).group(1).strip() if re.search(p, doc, re.S) else d)
+    meta = {
+        'title':       html.unescape(g(r'<title>(.*?)</title>')),
+        'description': g(r'<meta name="description" content="([^"]*)"'),
+        'canonical':   g(r'<link rel="canonical" href="([^"]*)"'),
+        'robots':      g(r"<meta name='robots' content='([^']*)'"),
+        'og':          [], 'twitter': [], 'jsonld': None,
+    }
+    for m in re.finditer(r'<meta property="(og:[^"]+)" content="([^"]*)" />', doc):
+        meta['og'].append((m.group(1), m.group(2)))
+    for m in re.finditer(r'<meta name="(twitter:[^"]+)" content="([^"]*)" />', doc):
+        meta['twitter'].append((m.group(1), m.group(2)))
+    m = re.search(r'<script type="application/ld\+json" class="yoast-schema-graph">(.*?)</script>', doc, re.S)
+    if m: meta['jsonld'] = m.group(1).strip()
+    # head metadata keeps the production domain; only asset paths inside it move
+    meta['jsonld'] = rewrite_absolute(meta['jsonld']) if meta['jsonld'] else None
+    meta['og'] = [(k, rewrite_absolute(v)) for k, v in meta['og']]
+    return meta
+
+SLUG_TO_ROUTE = {'home': 'index'}
+
+def main():
+    pages = {}
+    report = collections.OrderedDict()
+    for f in sorted(glob.glob(S+'/pages/*.html')):
+        slug = os.path.basename(f)[:-5]
+        if slug.startswith('_'):
+            continue        # _404.html is handled by gen_404.py, it is not a route
+        doc  = open(f, encoding='utf-8', errors='replace').read()
+        plan = css_plan(doc)
+        meta = head_meta(doc)
+
+        hs, he = doc.find('<header'), doc.find('</header>')
+        fs, fe = doc.find('<footer'), doc.find('</footer>')
+        kind = 'nicepage' if ('<div class="u-body' in doc and hs >= 0 and fs > hs) else 'theme'
+
+        if kind == 'nicepage':
+            content = doc[he+len('</header>'):fs]
+            footer  = doc[fs:fe+len('</footer>')]
+        else:
+            b = doc.find('<body'); b = doc.find('>', b)+1
+            content = doc[b:doc.find('</body>')]
+            footer  = None
+
+        # inline <style> blocks are hoisted into the page stylesheet; strip them from markup
+        content = STYLE_RE.sub('', content)
+        if footer: footer = STYLE_RE.sub('', footer)
+        # WP/GTM/analytics script tags in the body are re-emitted by the layout, not the markup
+        content = re.sub(r'<script[^>]*src=[\'"][^\'"]*[\'"][^>]*>\s*</script>', '', content)
+        content = re.sub(r'<link[^>]*rel=[\'"]stylesheet[\'"][^>]*>', '', content)
+
+        content = rewrite(content)
+        if footer: footer = rewrite(footer)
+
+        # page stylesheet = this page's own inline blocks, in document order
+        own = [b for k, b in plan if k == 'inline']
+        css = ('/* %s — inline CSS as served by the live page, in document order.\n'
+               '   %d block(s): Nicepage per-section rules, theme kit, header, footer. */\n\n'
+               % (slug, len(own))) + '\n\n'.join(own)
+        css = rewrite(css)
+        open(P('public/css', f'page-{slug}.css'), 'w', encoding='utf-8').write(css)
+
+        vendor = [b for k, b in plan if k == 'vendor']
+        fonts  = list(dict.fromkeys(b for k, b in plan if k == 'font'))
+        # The body class is load-bearing: u-overlap-transparent / u-overlap-contrast
+        # decide the header's colour treatment over each page's hero.
+        battrs = re.search(r'<body([^>]*)>', doc, re.S).group(1)
+        bcls   = re.search(r'class="([^"]*)"', battrs)
+        pages[slug] = dict(kind=kind, meta=meta, vendor=vendor, fonts=fonts,
+                           bodyClass=bcls.group(1) if bcls else '')
+
+        open(P('src/html', f'{slug}.content.html'), 'w', encoding='utf-8').write(content)
+        if footer: open(P('src/html', f'{slug}.footer.html'), 'w', encoding='utf-8').write(footer)
+
+        report[slug] = dict(kind=kind, inline_blocks=len(own), css_bytes=len(css),
+                            vendor_sheets=len(vendor), fonts=len(fonts),
+                            dropped=[m for k, m in plan if k == 'dropped'],
+                            not_served=[h for k, h in plan if k == 'skip'],
+                            content_bytes=len(content))
+    json.dump(pages,  open(S+'/pages_meta.json','w'), indent=1)
+    json.dump(report, open(S+'/build_report.json','w'), indent=1)
+
+    # footer is byte-identical on all 15 nicepage pages -> one component
+    foots = {}
+    for slug, d in pages.items():
+        if d['kind'] == 'nicepage':
+            t = open(P('src/html', f'{slug}.footer.html'), encoding='utf-8').read()
+            foots.setdefault(hashlib.md5(t.encode()).hexdigest(), []).append(slug)
+    print('distinct footers after rewrite:', len(foots))
+    canon = pages and [s for s in pages if pages[s]['kind']=='nicepage'][0]
+    os.replace(P('src/html', f'{canon}.footer.html'), P('src/html','_footer.html'))
+    for slug, d in pages.items():
+        if d['kind']=='nicepage' and os.path.exists(P('src/html', f'{slug}.footer.html')):
+            os.remove(P('src/html', f'{slug}.footer.html'))
+
+    open(P('src/html','_header.neutral.html'),'w',encoding='utf-8').write(rewrite(NEUTRAL))
+    json.dump(HDRMODEL, open(P('src/nav-active.json'),'w'), indent=1)
+
+    print(f"\n{'page':<26}{'kind':<10}{'inline':>7}{'cssKB':>7}{'vendor':>8}{'fonts':>7}{'markupKB':>10}")
+    for s, r in report.items():
+        print(f"{s:<26}{r['kind']:<10}{r['inline_blocks']:>7}{r['css_bytes']//1024:>7}"
+              f"{r['vendor_sheets']:>8}{r['fonts']:>7}{r['content_bytes']//1024:>10}")
+    print(f"\ninstagram images localized: {sum(1 for v in INSTA.values() if v)}"
+          f"  failed: {sum(1 for v in INSTA.values() if not v)}")
+
+if __name__ == '__main__':
+    main()

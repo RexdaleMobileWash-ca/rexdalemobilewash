@@ -1,0 +1,21 @@
+---
+// Ported from the live site's own 404 page, which uses the theme layout rather
+// than the Nicepage chrome. Prerendered so `dist/404.html` exists — that file is
+// what wrangler.jsonc's `not_found_handling: "404-page"` serves for unknown URLs.
+import SiteBase from '../layouts/SiteBase.astro';
+import content from '../html/404.content.html?raw';
+
+export const prerender = true;
+---
+
+<SiteBase
+  slug="404"
+  chrome="none"
+  bodyClass={"error404 wp-custom-logo e-lazyload elementor-default elementor-kit-381"}
+  title={"Page not found ~ Rexdale Mobile Wash Inc."}
+  robots="noindex, follow"
+  vendor={["/css/vendor/plugins-instagram-feed-css-sbi-styles.min.css", "/css/vendor/plugins-instagram-feed-vendor-smashballoon-framework-Packages-Blocks-css-sb-elementor.css", "/css/vendor/wp-emoji-styles.css", "/css/vendor/css-dist-block-library-style.min.css", "/css/vendor/classic-theme-styles.css", "/css/vendor/wp-global-styles.css", "/css/vendor/plugins-contact-form-7-includes-css-styles.css", "/css/vendor/themes-hello-elementor-style.min.css", "/css/vendor/themes-hello-elementor-theme.min.css", "/css/vendor/plugins-elementor-assets-css-frontend-lite.min.css", "/css/vendor/uploads-elementor-css-post-381.css", "/css/vendor/plugins-elementor-assets-css-modules-lazyload-frontend.min.css", "/css/vendor/plugins-elementor-assets-lib-swiper-v8-css-swiper.min.css", "/css/vendor/plugins-elementor-pro-assets-css-frontend-lite.min.css"]}
+  fonts={["https://fonts.googleapis.com/css?family=Roboto%3A100%2C100italic%2C200%2C200italic%2C300%2C300italic%2C400%2C400italic%2C500%2C500italic%2C600%2C600italic%2C700%2C700italic%2C800%2C800italic%2C900%2C900italic%7CRoboto+Slab%3A100%2C100italic%2C200%2C200italic%2C300%2C300italic%2C400%2C400italic%2C500%2C500italic%2C600%2C600italic%2C700%2C700italic%2C800%2C800italic%2C900%2C900italic&display=swap&ver=6.4.7"]}
+>
+  <Fragment set:html={content} />
+</SiteBase>
