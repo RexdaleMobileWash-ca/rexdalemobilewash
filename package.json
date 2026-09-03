@@ -11,7 +11,8 @@
     "verify": "./tools/verify/run-verify.sh",
     "verify:header": "python3 tools/verify/verify-header.py",
     "verify:no-old-host": "./tools/verify/no-old-host.sh",
-    "verify:responsive": "node tools/verify/responsive.cjs"
+    "verify:responsive": "node tools/verify/responsive.cjs",
+    "verify:deploy": "python3 tools/verify/deploy-check.py"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.0",
