@@ -74,6 +74,40 @@ Until one is settled, a hostname on an already-active zone on this account
 (`brandingcentres.com`, `briansmasonry.net`, …) is the shortest path to a
 reviewable URL — the same shape as `staging.briansmasonry.net`.
 
+### Workers Builds re-enables the public URL — unresolved
+
+Workers Builds **is** connected: a push to `main` triggered a build and deploy
+about 50 seconds later. It works.
+
+But that build **re-enabled `workers.dev`**, overriding `"workers_dev": false` and
+`"preview_urls": false` in `wrangler.jsonc`. A local `npm run build && npx wrangler
+deploy` honours both; the Workers Builds deploy does not. There is no
+`--no-workers-dev` flag, so the config file is the only lever, and it lost.
+
+**Consequence: every push to `main` currently publishes the client's unapproved
+site at `rexdalemobilewash.ash-47a.workers.dev` until someone disables it by hand.**
+It has been closed each time, but this is not a safe steady state.
+
+It may be a one-time behaviour on the first build after connecting the repo —
+distinguishing that costs another deliberate exposure window, so it has not been
+tested. Options, in order of preference:
+
+1. **Onboard Cloudflare Zero Trust and put an Access policy on the workers.dev
+   hostname.** Then the URL existing is harmless. Needs an account-wide team
+   domain and at least one identity provider (email OTP is built in).
+2. **Attach a real preview hostname** on an already-active zone and treat
+   workers.dev as a second door that must stay shut — still requires the manual
+   disable after each build.
+3. **Disconnect Workers Builds** and deploy by hand, where the config is honoured.
+
+Until one is chosen, check after every push:
+
+```bash
+curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
+  https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/rexdalemobilewash/subdomain
+# expect {"enabled": false, "previews_enabled": false}
+```
+
 ### The trap in this config
 
 `@astrojs/cloudflare` resolves `wrangler.jsonc` at **build** time into
