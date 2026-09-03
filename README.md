@@ -116,6 +116,48 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
    today, on 14 pages.
 2. Gate 13 attaches the real domain, after the `.ca` zone is active.
 
+## Images
+
+Site images currently ship from `public/images/` in this repo. The stack serves
+them from Backblaze B2 through `img.[domain]` (AD-9) — gates 4 to 7.
+
+### Gate 4 — the bucket (done)
+
+```
+bucket .................... rexdalemobilewash-img
+bucketId .................. 6fdfd8ab8f996b8fac030819
+account ................... TBOX Studio          MATCH — holds briansmasonry-img,
+                                                 boldeimaging-img, wheresmylink-img
+bucket type ............... allPublic
+lifecycle rule ............ keep only last version (daysFromHidingToDeleting=1)
+object lock ............... off
+native origin ............. f005.backblazeb2.com           <- the gate 7 CNAME target
+S3 endpoint ............... s3.us-east-005.backblazeb2.com <- keys/SDKs only
+direct fetch .............. 200 (probe uploaded, fetched, deleted)
+unknown path .............. 404, not another bucket's content
+files in bucket ........... 0
+```
+
+Those two addresses look alike and are not interchangeable. **The CNAME target is
+the native origin**; using the S3 endpoint there is the usual gate 7 failure.
+
+### Still to do
+
+- **Gate 5** — copy the 268 files (~84MB) into the bucket and prove both sides
+  match by count and by bytes.
+- **Gate 7** — `img.rexdalemobilewash.ca` as a *proxied* Cloudflare CNAME onto
+  `f005.backblazeb2.com`, plus the transform rule that scopes the hostname to
+  this one bucket. **Blocked**: the zone is still pending, nameservers at GoDaddy.
+  Without the transform rule the hostname exposes every public bucket on that
+  shared origin, so the rule is not optional.
+- Then `PUBLIC_IMG_BASE=https://img.rexdalemobilewash.ca` as a Workers Builds
+  **build** variable (not a runtime secret — every page is prerendered, so a
+  runtime secret is not read during the build and the URLs come out empty), and
+  the image paths swapped over.
+
+**The site must never reference `*.backblazeb2.com`.** That path bypasses
+Cloudflare and bills the client for every image view.
+
 ## How the port is structured
 
 Everything under `src/html/`, `src/nav-active.json` and `public/css/page-*.css`
