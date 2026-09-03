@@ -3,6 +3,18 @@
   "name": "rexdalemobilewash",
   "compatibility_date": "2026-09-03",
   "compatibility_flags": ["nodejs_compat"],
+  // No public hostname until one is chosen deliberately. A workers.dev URL is a
+  // second, unlisted copy of the client's unapproved site on the open internet,
+  // and preview URLs give every branch build another one.
+  //
+  // These two are load-bearing: @astrojs/cloudflare resolves this file at BUILD
+  // time into dist/client/wrangler.json, and that is what `wrangler deploy`
+  // reads. Change them and rebuild before deploying, or the deploy silently uses
+  // the previous build's copy — which defaults both to ENABLED and publishes the
+  // site. Verify after any deploy:
+  //   GET /accounts/{id}/workers/scripts/rexdalemobilewash/subdomain
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "404-page",

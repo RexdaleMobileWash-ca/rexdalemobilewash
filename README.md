@@ -44,6 +44,76 @@ can run, while every page stays a prerendered file.
 > *"doesn't point to an existing file"*. The adapter supplies the entrypoint and
 > the assets directory itself. Worth fixing in the gate 3 skill.
 
+## Deployment
+
+Deployed to Cloudflare Workers on the account `47a82355…` (Ash@brandingcentres.com)
+as the Worker **`rexdalemobilewash`**.
+
+```
+worker .......................... rexdalemobilewash
+repo ............................ RexdaleMobileWash-ca/rexdalemobilewash @ main
+version ......................... 24a2078c-646a-4744-981d-daa932228c88
+preview hostname attached ....... NONE — see below
+cutover hostname ................ not attached (that is gate 13)
+workers.dev ..................... disabled
+preview URLs .................... disabled
+```
+
+**It currently has no reachable hostname, on purpose.** The two candidates both
+need a decision that has not been made:
+
+- `*.rexdalemobilewash.ca` — the zone is on this account but **pending**: its
+  nameservers are still GoDaddy (`ns41/ns42.domaincontrol.com`), so Cloudflare is
+  not authoritative and cannot create the record or issue the certificate. Moving
+  them is gate 6, which also moves the client's MX/SPF records.
+- `workers.dev` behind Cloudflare Access — the account has **no Zero Trust
+  organisation and no identity providers**, so there is nothing to authenticate
+  against. Onboarding it means choosing an account-wide team domain.
+
+Until one is settled, a hostname on an already-active zone on this account
+(`brandingcentres.com`, `briansmasonry.net`, …) is the shortest path to a
+reviewable URL — the same shape as `staging.briansmasonry.net`.
+
+### The trap in this config
+
+`@astrojs/cloudflare` resolves `wrangler.jsonc` at **build** time into
+`dist/client/wrangler.json`, and that generated file is what `wrangler deploy`
+reads. Editing `wrangler.jsonc` without rebuilding deploys the *previous* build's
+settings. That is not cosmetic: `workers_dev` and `preview_urls` default to
+**enabled**, so a stale config publishes the client's unapproved site. It happened
+once during this deploy and was closed within about two minutes.
+
+Always `npm run build` before `npx wrangler deploy`, and verify after:
+
+```bash
+curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
+  https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/rexdalemobilewash/subdomain
+# expect {"enabled": false, "previews_enabled": false}
+```
+
+### Still to do
+
+1. **Connect Workers Builds** — dashboard only, cannot be done from here. Install
+   the *Cloudflare Workers and Pages* GitHub App on the **RexdaleMobileWash-ca**
+   org, scoped to this repo, then Workers & Pages → `rexdalemobilewash` →
+   Settings → Builds → Connect: branch `main`, build `npm run build`, deploy
+   `npx wrangler deploy`, root directory blank.
+2. Attach a preview hostname once chosen.
+3. Gate 11 wires the contact form; only then does gate 13 attach the real domain.
+
+### Deploy test, run against the deployed host
+
+```
+pages 200 ....................... 17 of 17
+distinct assets fetched ......... 154   (153 × 200, 1 × 404)
+assets served by the old domain .. 0     *** the field that matters ***
+unknown path .................... 404 + the ported 404 page
+```
+
+The single 404 is `/wp-login.php` on `/blog-post-title/` — the "log in to leave a
+reply" link WordPress emitted. It is a dead link on a placeholder page, not a
+missing asset.
+
 ## How the port is structured
 
 Everything under `src/html/`, `src/nav-active.json` and `public/css/page-*.css`
