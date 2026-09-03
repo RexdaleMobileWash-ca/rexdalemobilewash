@@ -3923,3 +3923,8 @@ a.u-link.u-text-hover-grey-90.hover {
   margin-right: calc(((100% - 1140px) / 2) + 406px);
 }
 /*/RESPONSIVE_CLASS*/
+
+
+/* port: the Load More button needs the WordPress AJAX
+   endpoint, which does not exist here. */
+#sb_instagram.sbi_no_js #sbi_load .sbi_load_btn { display: none; }

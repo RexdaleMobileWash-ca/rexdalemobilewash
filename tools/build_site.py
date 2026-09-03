@@ -164,21 +164,45 @@ def static_instagram(text):
     """Make the Instagram grid work without the plugin's JavaScript.
 
     Smash Balloon ships every tile as a placeholder <img> and swaps in the real
-    photo from data-full-res at runtime; the avatar is painted from
-    data-avatar-url the same way. That script needs the WordPress AJAX endpoint,
-    so it is not shipped here — which would leave a grid of grey placeholders.
-    Point the markup straight at the frozen local images instead.
+    photo at runtime, from data-full-res. That script needs the WordPress AJAX
+    endpoint, so it is not shipped here. Three things it does that the CSS alone
+    does not, and that the grid is invisible or misshapen without:
+
+      1. the tiles ship as `.sbi_item.sbi_transition`, which the plugin's own CSS
+         sets to `opacity: 0` — the JS fades them in. Without it the whole grid
+         renders transparent: images load, nothing is visible.
+      2. the 1:1 aspect ratio (data-imageaspectratio) is applied by the JS, not
+         by CSS, so tiles otherwise render at each photo's natural aspect.
+      3. the photo is painted as a CSS background on `.sbi_photo`, inline.
+
+    Smash Balloon ships a no-JS mode for exactly this, keyed on a `sbi_no_js`
+    class on the container, which fixes 1 and 2 and hides the placeholder <img>.
+    So: add that class, and paint the background it expects. The <img> stays for
+    its alt text; the plugin's no-JS CSS hides it.
     """
     if 'sb_instagram' not in text:
         return text
+
+    # turn on the plugin's own no-JS mode
+    text = re.sub(r'(<div id="sb_instagram"[^>]*\sclass=")([^"]*)"',
+                  lambda m: m.group(1) + m.group(2).rstrip() + ' sbi_no_js"', text, count=1)
 
     def fix_tile(m):
         tile = m.group(0)
         full = re.search(r'data-full-res="([^"]+)"', tile)
         if not full:
             return tile
-        return re.sub(r'(<img[^>]*\ssrc=")[^"]*placeholder\.png(")',
-                      lambda i: i.group(1) + full.group(1) + i.group(2), tile, count=1)
+        url = full.group(1)
+        tile = re.sub(r'(<img[^>]*\ssrc=")[^"]*placeholder\.png(")',
+                      lambda i: i.group(1) + url + i.group(2), tile, count=1)
+        # the background the no-JS mode renders the photo with
+        style = (f"background-image:url('{url}');background-size:cover;"
+                 "background-position:center center;background-repeat:no-repeat")
+        if 'style="' in tile.split('>')[0]:
+            tile = re.sub(r'(<a class="sbi_photo"[^>]*style=")', r'\1' + style + ';', tile, count=1)
+        else:
+            tile = tile.replace('<a class="sbi_photo"', f'<a class="sbi_photo" style="{style}"', 1)
+        return tile
 
     text = re.sub(r'<a class="sbi_photo".*?</a>', fix_tile, text, flags=re.S)
 
@@ -295,6 +319,16 @@ def main():
         css = ('/* %s — inline CSS as served by the live page, in document order.\n'
                '   %d block(s): Nicepage per-section rules, theme kit, header, footer. */\n\n'
                % (slug, len(own))) + '\n\n'.join(own)
+        if 'sb_instagram' in content:
+            # Smash Balloon's own no-JS rule for the Load More button loses the
+            # cascade: #sb_instagram.sbi_no_js .sbi_load_btn{display:none} is
+            # (1,2,0), while #sb_instagram #sbi_load .sbi_load_btn{display:
+            # inline-block} is (2,1,0) and wins. The button needs the plugin's
+            # AJAX endpoint, so here it does nothing at all — hide it with a
+            # selector that actually beats the one setting it visible.
+            css += ('\n\n/* port: the Load More button needs the WordPress AJAX\n'
+                    '   endpoint, which does not exist here. */\n'
+                    '#sb_instagram.sbi_no_js #sbi_load .sbi_load_btn { display: none; }\n')
         css = rewrite(css)
         open(P('public/css', f'page-{slug}.css'), 'w', encoding='utf-8').write(css)
 

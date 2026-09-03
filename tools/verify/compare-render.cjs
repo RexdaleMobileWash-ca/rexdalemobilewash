@@ -118,6 +118,24 @@ async function measure(page, url) {
     out.images.total = imgs.length;
     out.images.broken = imgs.filter((i) => i.complete && i.naturalWidth === 0).map((i) => (i.currentSrc || i.src).slice(0, 120));
     out.images.brokenCount = out.images.broken.length;
+
+    // An image that loaded fine but renders at zero opacity because an ANCESTOR
+    // is transparent. This is what a plugin's fade-in JS leaves behind when the
+    // JS is not shipped: the whole Instagram grid loaded and was invisible, and
+    // the ref-vs-port diff could not see it because the reference strips the same
+    // scripts. display:none is NOT flagged — that is usually deliberate.
+    const effOpacity = (el) => {
+      let o = 1;
+      for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+        o *= parseFloat(getComputedStyle(n).opacity || '1');
+      }
+      return o;
+    };
+    out.images.loadedButTransparent = imgs
+      .filter((i) => i.naturalWidth > 0 && getComputedStyle(i).display !== 'none')
+      .filter((i) => effOpacity(i) < 0.01)
+      .map((i) => (i.currentSrc || i.src).slice(0, 110));
+    out.images.transparentCount = out.images.loadedButTransparent.length;
     const h = document.querySelector('h1, h2');
     out.fonts.heading = h ? getComputedStyle(h).fontFamily : null;
     out.fonts.body = getComputedStyle(document.body).fontFamily;
@@ -194,6 +212,8 @@ function diffProbes(a, b) {
     const textSame = row.ref.text === row.port.text;
 
     report[slug] = { diffProbes: d, secDiff, countDiff, heightDelta, textSame,
+      transparentPort: row.port.images.transparentCount,
+      transparentPortList: row.port.images.loadedButTransparent,
       refHeight: row.ref.docHeight, portHeight: row.port.docHeight,
       brokenRef: row.ref.images.brokenCount, brokenPort: row.port.images.brokenCount,
       brokenPortList: row.port.images.broken, failedPort: row.port.failed,
@@ -203,10 +223,15 @@ function diffProbes(a, b) {
       linksSame: JSON.stringify(row.ref.internalLinks) === JSON.stringify(row.port.internalLinks) };
 
     const ok = !d.length && !secDiff.length && !countDiff.length && Math.abs(heightDelta) <= 2
-      && row.port.images.brokenCount === 0 && !row.port.failed.length && textSame
+      && row.port.images.brokenCount === 0 && row.port.images.transparentCount === 0
+      && !row.port.failed.length && textSame
       && report[slug].bodyClassSame && report[slug].linksSame;
     if (ok) clean++;
-    console.log(`${ok ? 'MATCH  ' : 'DIFF   '} ${slug.padEnd(24)} h ref=${row.ref.docHeight} port=${row.port.docHeight} (${heightDelta >= 0 ? '+' : ''}${heightDelta})  broken=${row.port.images.brokenCount}  text=${textSame ? 'same' : 'DIFFERS'}`);
+    console.log(`${ok ? 'MATCH  ' : 'DIFF   '} ${slug.padEnd(24)} h ref=${row.ref.docHeight} port=${row.port.docHeight} (${heightDelta >= 0 ? '+' : ''}${heightDelta})  broken=${row.port.images.brokenCount}  invisible=${row.port.images.transparentCount}  text=${textSame ? 'same' : 'DIFFERS'}`);
+    if (row.port.images.transparentCount) {
+      console.log(`         ${row.port.images.transparentCount} image(s) loaded but rendered at zero opacity:`);
+      for (const u of row.port.images.loadedButTransparent.slice(0, 3)) console.log(`           ${u}`);
+    }
     for (const x of [...d, ...secDiff, ...countDiff].slice(0, 8)) console.log(`         ${x}`);
     if (row.port.failed.length) console.log(`         failed requests: ${row.port.failed.slice(0, 4).join(', ')}`);
   }

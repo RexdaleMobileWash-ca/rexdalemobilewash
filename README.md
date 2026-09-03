@@ -161,6 +161,14 @@ npm run verify                # full render + pixel + behaviour parity
 npm run verify:responsive     # horizontal overflow, 320px → 3440px
 ```
 
+> **What this comparison cannot see.** The reference is the captured document
+> with the same WordPress plugin scripts stripped that the port strips. So any
+> regression caused by *not shipping that JS* appears on both sides and the diff
+> reports a match — which is exactly how the Instagram grid shipped invisible.
+> The guard for that class of bug is the `images loaded but rendered invisible`
+> check, which flags an image that loaded fine but sits under a transparent
+> ancestor. Screenshots of the live site remain the backstop.
+
 `npm run verify` renders each **original captured document** and the **built page**
 in the same Chromium, from the same local assets and the same cached fonts, and
 compares them. Both sides are served at *identical route paths* — that is not
@@ -174,7 +182,10 @@ Results at the time of writing:
 render parity ......... 17/17   computed styles, section geometry, element
                                 counts, internal links, body class, text
                         17/17   again at 390px
-pixel diff ............ 17/17   full-page screenshots, byte-identical at 1440px
+pixel diff ............ 15/17   full-page screenshots at 1440px. The 2 are `/` and
+                                `/what-we-do/`, differing only where the dead
+                                Load More button was removed (33 rows); their
+                                Instagram grids are pixel-identical.
                         16/17   at 390px; the 17th is /about-us/, whose 19-frame
                                 animated GIF lands on a different frame. Its
                                 element geometry is identical (x75 y877 153x114)
@@ -184,6 +195,8 @@ behaviour ............. 16/16   dropdown open/close (incl. no focus latch after
                                 PhotoSwipe lightbox opens
 header transform ...... 15/15   model AND built pages, byte-exact
 broken images ......... 0
+images loaded but
+  rendered invisible .. 0        added after the Instagram grid shipped invisible
 failed requests ....... 0
 old-server references . 0
 ```
@@ -198,7 +211,7 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Five, all forced, all verified:
+Six, all forced, all verified:
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -223,7 +236,22 @@ Five, all forced, all verified:
    also carried a nonce. The Elementor background-lazyload observer is **kept** —
    4 elements still depend on it.
 
-5. **The empty trailing `<div class="u-body">` is dropped.** The live site emits
+5. **The Instagram grid is rendered in Smash Balloon's no-JS mode.** Without
+   `sbi-scripts.js` the tiles ship as `.sbi_item.sbi_transition`, which the
+   plugin's own CSS sets to `opacity: 0` — the JS is what fades them in. The grid
+   loaded correctly and was **completely invisible**. The plugin ships a no-JS
+   mode for exactly this, keyed on a `sbi_no_js` class, so the port sets that
+   class and paints each photo as the CSS background that mode expects. It also
+   restores the 1:1 tile ratio, which the JS applied and the CSS does not
+   (tiles were rendering at each photo's natural aspect — 278×493 instead of
+   278×278). The dead **Load More** button is hidden: it needs the AJAX endpoint,
+   and the plugin's own rule to hide it loses the cascade
+   (`#sb_instagram.sbi_no_js .sbi_load_btn` is (1,2,0) against
+   `#sb_instagram #sbi_load .sbi_load_btn` at (2,1,0)), so the port overrides it
+   explicitly. This button is the **only** pixel difference from the reference on
+   `/` and `/what-we-do/` — 33 rows at y 3862–3894; the grid itself is identical.
+
+6. **The empty trailing `<div class="u-body">` is dropped.** The live site emits
    one after the footer, inside `.nicepage-container`. It renders nothing, but
    `nicepage.js` builds a hidden PhotoSwipe template per `.u-body`, so the live
    site initialises one more than it needs. Visible behaviour is unchanged:
