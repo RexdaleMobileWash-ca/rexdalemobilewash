@@ -141,10 +141,46 @@ files in bucket ........... 0
 Those two addresses look alike and are not interchangeable. **The CNAME target is
 the native origin**; using the S3 endpoint there is the usual gate 7 failure.
 
+### Gate 5 — the images are in the bucket (done)
+
+```
+                        staging          bucket
+files                       537             537
+bytes                 170534375       170534375
+difference                                    0
+byte-for-byte spot check   5 of 5 OK   (fixed seed 20260903)
+RESULT                     PASS
+```
+
+Reproduce with `python3 tools/reconcile-images.py ./.port-work/b2-staging
+b2:rexdalemobilewash-img` — it exits non-zero on any difference, names every
+missing file with its size, and checks that the combined size of the named files
+equals the byte gap exactly. A count match alone would not prove nothing was
+silently truncated.
+
+**Source: the WordPress media library, not the pages.** The pages reference 110
+image files; `wp-json/wp/v2/media` lists **115 media items whose generated sizes
+come to 537 distinct files**. Copying only what the pages use would have left
+gate 14's redirects 404ing for every other old image URL. Paths are preserved
+uploads-relative (`2020/12/foo.jpg`), so the gate 14 rule is one prefix rewrite.
+
+**15 files carried GPS EXIF** — one coordinate, ~130km from the business address,
+i.e. somebody's property rather than the yard. `tools/strip-exif.py` removed
+EXIF/XMP from 164 files before upload, at the container level (JPEG APP1
+segments, PNG eXIf/iTXt chunks) so the compressed image data is untouched: all
+164 verified pixel-identical afterwards, 1.8MB of metadata gone.
+
+The upload used an application key **scoped to this one bucket**, not the master
+key — the master key can delete every other client's bucket. The key value lives
+in `.port-work/b2-key.env` (gitignored, chmod 600) and belongs in the password
+manager.
+
 ### Still to do
 
-- **Gate 5** — copy the 268 files (~84MB) into the bucket and prove both sides
-  match by count and by bytes.
+- **The 158 Instagram stills are NOT in the bucket.** They are not the old site's
+  images — they were harvested from the feed — so they sit outside gate 5's
+  reconciliation. They still ship from `public/images/instagram/` in the repo.
+  Worth moving to the bucket for consistency, but it is a separate decision.
 - **Gate 7** — `img.rexdalemobilewash.ca` as a *proxied* Cloudflare CNAME onto
   `f005.backblazeb2.com`, plus the transform rule that scopes the hostname to
   this one bucket. **Blocked**: the zone is still pending, nameservers at GoDaddy.
