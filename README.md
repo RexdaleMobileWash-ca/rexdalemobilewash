@@ -46,107 +46,75 @@ can run, while every page stays a prerendered file.
 
 ## Deployment
 
-Deployed to Cloudflare Workers on the account `47a82355…` (Ash@brandingcentres.com)
-as the Worker **`rexdalemobilewash`**.
+**Live at https://rexdalemobilewash.ash-47a.workers.dev**
+
+Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
+`rexdalemobilewash`. Workers Builds is connected: push to `main` and Cloudflare
+builds and deploys, about a minute end to end.
 
 ```
 worker .......................... rexdalemobilewash
 repo ............................ RexdaleMobileWash-ca/rexdalemobilewash @ main
-version ......................... 24a2078c-646a-4744-981d-daa932228c88
-preview hostname attached ....... NONE — see below
-cutover hostname ................ not attached (that is gate 13)
-workers.dev ..................... disabled
+build ........................... npm run build   deploy: npx wrangler deploy
+review hostname ................. rexdalemobilewash.ash-47a.workers.dev
+cutover hostname ................ not attached — that is gate 13
+workers.dev ..................... enabled (public, not access-gated)
 preview URLs .................... disabled
 ```
 
-**It currently has no reachable hostname, on purpose.** The two candidates both
-need a decision that has not been made:
-
-- `*.rexdalemobilewash.ca` — the zone is on this account but **pending**: its
-  nameservers are still GoDaddy (`ns41/ns42.domaincontrol.com`), so Cloudflare is
-  not authoritative and cannot create the record or issue the certificate. Moving
-  them is gate 6, which also moves the client's MX/SPF records.
-- `workers.dev` behind Cloudflare Access — the account has **no Zero Trust
-  organisation and no identity providers**, so there is nothing to authenticate
-  against. Onboarding it means choosing an account-wide team domain.
-
-Until one is settled, a hostname on an already-active zone on this account
-(`brandingcentres.com`, `briansmasonry.net`, …) is the shortest path to a
-reviewable URL — the same shape as `staging.briansmasonry.net`.
-
-### Workers Builds re-enables the public URL — unresolved
-
-Workers Builds **is** connected: a push to `main` triggered a build and deploy
-about 50 seconds later. It works.
-
-But that build **re-enabled `workers.dev`**, overriding `"workers_dev": false` and
-`"preview_urls": false` in `wrangler.jsonc`. A local `npm run build && npx wrangler
-deploy` honours both; the Workers Builds deploy does not. There is no
-`--no-workers-dev` flag, so the config file is the only lever, and it lost.
-
-**Consequence: every push to `main` currently publishes the client's unapproved
-site at `rexdalemobilewash.ash-47a.workers.dev` until someone disables it by hand.**
-It has been closed each time, but this is not a safe steady state.
-
-It may be a one-time behaviour on the first build after connecting the repo —
-distinguishing that costs another deliberate exposure window, so it has not been
-tested. Options, in order of preference:
-
-1. **Onboard Cloudflare Zero Trust and put an Access policy on the workers.dev
-   hostname.** Then the URL existing is harmless. Needs an account-wide team
-   domain and at least one identity provider (email OTP is built in).
-2. **Attach a real preview hostname** on an already-active zone and treat
-   workers.dev as a second door that must stay shut — still requires the manual
-   disable after each build.
-3. **Disconnect Workers Builds** and deploy by hand, where the config is honoured.
-
-Until one is chosen, check after every push:
+### Deploy test, run against the deployed host
 
 ```bash
-curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
-  https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/rexdalemobilewash/subdomain
-# expect {"enabled": false, "previews_enabled": false}
+DEPLOY_HOST=https://rexdalemobilewash.ash-47a.workers.dev npm run verify:deploy
 ```
 
-### The trap in this config
+```
+pages 200 ........................ 17 of 17
+distinct assets fetched .......... 154   (153 × 200, 1 × 404)
+assets on the old server ......... 0     *** the field that matters ***
+unknown path ..................... HTTP 404 + ported 404 page
+```
 
-`@astrojs/cloudflare` resolves `wrangler.jsonc` at **build** time into
-`dist/client/wrangler.json`, and that generated file is what `wrangler deploy`
-reads. Editing `wrangler.jsonc` without rebuilding deploys the *previous* build's
-settings. That is not cosmetic: `workers_dev` and `preview_urls` default to
-**enabled**, so a stale config publishes the client's unapproved site. It happened
-once during this deploy and was closed within about two minutes.
+The single 404 is `/wp-login.php` on `/blog-post-title/` — the "log in to leave a
+reply" link WordPress emitted. A dead link on a placeholder page, not a missing
+asset. It disappears if that page is redirected.
 
-Always `npm run build` before `npx wrangler deploy`, and verify after:
+### The review URL is public
+
+`rexdalemobilewash.ash-47a.workers.dev` is an unlisted but ungated copy of the
+client's site. Nothing links to it and the real domain is untouched, so the
+practical risk is low — but it is not private. Two ways to close it when it
+matters: put a Cloudflare Access policy in front (needs Zero Trust onboarding on
+this account — there is currently no team domain and no identity provider), or
+attach a real hostname on an active zone and disable workers.dev.
+
+`*.rexdalemobilewash.ca` cannot be used yet: the zone is on this account but
+**pending**, nameservers still at GoDaddy (`ns41/ns42.domaincontrol.com`).
+Moving them is gate 6, which also moves the client's MX/SPF records.
+
+### Two things that will bite
+
+**The config is resolved at build time.** `@astrojs/cloudflare` writes
+`wrangler.jsonc` into `dist/client/wrangler.json` during the build, and *that* is
+what `wrangler deploy` reads. Edit the config and deploy without rebuilding and
+you ship the previous build's settings. `workers_dev` and `preview_urls` default
+to **enabled**, so a stale config publishes the site.
+
+**Workers Builds has overridden those flags once**, re-enabling `workers.dev`
+against `"workers_dev": false`. A later build did not repeat it, so it looks like
+one-time behaviour on the first build after connecting the repo — but if the site
+ever needs to be genuinely private, verify after each deploy:
 
 ```bash
 curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
   https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/rexdalemobilewash/subdomain
-# expect {"enabled": false, "previews_enabled": false}
 ```
 
 ### Still to do
 
-1. **Connect Workers Builds** — dashboard only, cannot be done from here. Install
-   the *Cloudflare Workers and Pages* GitHub App on the **RexdaleMobileWash-ca**
-   org, scoped to this repo, then Workers & Pages → `rexdalemobilewash` →
-   Settings → Builds → Connect: branch `main`, build `npm run build`, deploy
-   `npx wrangler deploy`, root directory blank.
-2. Attach a preview hostname once chosen.
-3. Gate 11 wires the contact form; only then does gate 13 attach the real domain.
-
-### Deploy test, run against the deployed host
-
-```
-pages 200 ....................... 17 of 17
-distinct assets fetched ......... 154   (153 × 200, 1 × 404)
-assets served by the old domain .. 0     *** the field that matters ***
-unknown path .................... 404 + the ported 404 page
-```
-
-The single 404 is `/wp-login.php` on `/blog-post-title/` — the "log in to leave a
-reply" link WordPress emitted. It is a dead link on a placeholder page, not a
-missing asset.
+1. Gate 11 wires the contact form to Resend at `/api/contact` — it is markup only
+   today, on 14 pages.
+2. Gate 13 attaches the real domain, after the `.ca` zone is active.
 
 ## How the port is structured
 

@@ -33,7 +33,12 @@ def get(url, method='GET'):
         with urllib.request.urlopen(req, timeout=45) as r:
             return r.status, r.read()
     except urllib.error.HTTPError as e:
-        return e.code, b''
+        # the body matters on an error status too — the 404 page is the whole point
+        # of not_found_handling, and discarding it here reported a false failure
+        try:
+            return e.code, e.read()
+        except Exception:
+            return e.code, b''
     except Exception as e:
         return 0, str(e).encode()
 

@@ -3,18 +3,20 @@
   "name": "rexdalemobilewash",
   "compatibility_date": "2026-09-03",
   "compatibility_flags": ["nodejs_compat"],
-  // No public hostname until one is chosen deliberately. A workers.dev URL is a
-  // second, unlisted copy of the client's unapproved site on the open internet,
-  // and preview URLs give every branch build another one.
-  //
-  // These two are load-bearing: @astrojs/cloudflare resolves this file at BUILD
-  // time into dist/client/wrangler.json, and that is what `wrangler deploy`
-  // reads. Change them and rebuild before deploying, or the deploy silently uses
-  // the previous build's copy — which defaults both to ENABLED and publishes the
-  // site. Verify after any deploy:
-  //   GET /accounts/{id}/workers/scripts/rexdalemobilewash/subdomain
-  "workers_dev": false,
+  // The review hostname is the workers.dev URL, deliberately public for now:
+  //   https://rexdalemobilewash.ash-47a.workers.dev
+  // It is an unlisted copy of the client's site on the open internet. Nothing
+  // links to it and the real domain is untouched, but it is not access-gated —
+  // swap it for a real hostname (or put Access in front) before this matters.
+  "workers_dev": true,
+  // Branch builds would each publish another URL. Off.
   "preview_urls": false,
+  //
+  // Both are resolved at BUILD time by @astrojs/cloudflare into
+  // dist/client/wrangler.json, and THAT is what `wrangler deploy` reads — so
+  // always rebuild before deploying, or the deploy uses the previous build's
+  // copy. Workers Builds has also overridden these once on its own. Check with:
+  //   GET /accounts/{id}/workers/scripts/rexdalemobilewash/subdomain
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "404-page",
