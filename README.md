@@ -182,10 +182,7 @@ Results at the time of writing:
 render parity ......... 17/17   computed styles, section geometry, element
                                 counts, internal links, body class, text
                         17/17   again at 390px
-pixel diff ............ 15/17   full-page screenshots at 1440px. The 2 are `/` and
-                                `/what-we-do/`, differing only where the dead
-                                Load More button was removed (33 rows); their
-                                Instagram grids are pixel-identical.
+pixel diff ............ 17/17   full-page screenshots, byte-identical at 1440px
                         16/17   at 390px; the 17th is /about-us/, whose 19-frame
                                 animated GIF lands on a different frame. Its
                                 element geometry is identical (x75 y877 153x114)
@@ -211,7 +208,7 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Six, all forced, all verified:
+Seven, all forced, all verified:
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -236,7 +233,20 @@ Six, all forced, all verified:
    also carried a nonce. The Elementor background-lazyload observer is **kept** —
    4 elements still depend on it.
 
-5. **The Instagram grid is rendered in Smash Balloon's no-JS mode.** Without
+5. **The Instagram feed carries all 157 posts, not the 20 the page shipped with.**
+   The captured page holds one page of the feed; the rest only arrive from the
+   plugin's `sbi_load_more_clicked` AJAX endpoint, which dies with the WordPress
+   site — and the image URLs inside it are signed and expire sooner than that.
+   `tools/harvest-instagram.py` paged through that endpoint once and pulled every
+   tile; all 157 are inlined, their photos downloaded to
+   `public/images/instagram/`. The page still shows 20 with a working **Load
+   More** that reveals 20 more per click, so the rendered page is identical to
+   the original — it just no longer needs a server to page through.
+
+   **Re-running the harvester will not work once the old site is off.** Its
+   output is committed for that reason.
+
+6. **The Instagram grid is rendered in Smash Balloon's no-JS mode.** Without
    `sbi-scripts.js` the tiles ship as `.sbi_item.sbi_transition`, which the
    plugin's own CSS sets to `opacity: 0` — the JS is what fades them in. The grid
    loaded correctly and was **completely invisible**. The plugin ships a no-JS
@@ -244,14 +254,10 @@ Six, all forced, all verified:
    class and paints each photo as the CSS background that mode expects. It also
    restores the 1:1 tile ratio, which the JS applied and the CSS does not
    (tiles were rendering at each photo's natural aspect — 278×493 instead of
-   278×278). The dead **Load More** button is hidden: it needs the AJAX endpoint,
-   and the plugin's own rule to hide it loses the cascade
-   (`#sb_instagram.sbi_no_js .sbi_load_btn` is (1,2,0) against
-   `#sb_instagram #sbi_load .sbi_load_btn` at (2,1,0)), so the port overrides it
-   explicitly. This button is the **only** pixel difference from the reference on
-   `/` and `/what-we-do/` — 33 rows at y 3862–3894; the grid itself is identical.
+   278×278). The Load More button stays and works client-side (see above), so
+   `/` and `/what-we-do/` remain pixel-identical to the reference.
 
-6. **The empty trailing `<div class="u-body">` is dropped.** The live site emits
+7. **The empty trailing `<div class="u-body">` is dropped.** The live site emits
    one after the footer, inside `.nicepage-container`. It renders nothing, but
    `nicepage.js` builds a hidden PhotoSwipe template per `.u-body`, so the live
    site initialises one more than it needs. Visible behaviour is unchanged:

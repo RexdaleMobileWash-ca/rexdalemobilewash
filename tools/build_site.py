@@ -127,8 +127,28 @@ def localize_instagram(text):
             out = out.replace(raw, INSTA[raw])
     return out
 
+def inject_full_feed(text):
+    """Replace the feed's first 20 tiles with every tile the live site can serve.
+
+    The captured page carries one page of the feed; the rest only arrive from the
+    plugin's AJAX endpoint, which dies with the WordPress site. tools/harvest-
+    instagram.py pulled all of them once; this splices them in so the whole feed
+    is static. Runs before the image localiser so the new tiles' photos are
+    downloaded too.
+    """
+    tiles_file = os.path.join(S, 'instagram-tiles.html')
+    if 'sbi_images' not in text or not os.path.exists(tiles_file):
+        return text
+    tiles = open(tiles_file, encoding='utf-8').read().strip()
+    m = re.search(r'(<div id="sbi_images"[^>]*>)(.*?)(</div>\s*</div>\s*<div id="sbi_load")',
+                  text, re.S)
+    if not m:
+        return text
+    return text[:m.start(2)] + '\n' + tiles + '\n\t' + text[m.end(2):]
+
 def rewrite(text):
     """Point every old-server reference at this site's own assets."""
+    text = inject_full_feed(text)
     for host in ('https://www.new.rexdalemobilewash.ca', 'http://www.new.rexdalemobilewash.ca',
                  'https://new.rexdalemobilewash.ca',      'http://new.rexdalemobilewash.ca',
                  'https://www.rexdalemobilewash.ca',      'http://www.rexdalemobilewash.ca',
@@ -215,6 +235,53 @@ def static_instagram(text):
         return block + f'<img src="{url.group(1)}" alt="" width="80" height="80">'
 
     text = re.sub(r'<div class="sbi_header_img"[^>]*>', fix_avatar, text)
+
+    # The live feed shows one page at a time behind a Load More button that calls
+    # the plugin's AJAX endpoint. Every tile is inlined here, so keep the same
+    # behaviour without the endpoint: hide everything past the first page and let
+    # the button reveal the next batch. Same UX, no network, nothing to expire.
+    PAGE = 20
+    def paginate(m):
+        head, body = m.group(1), m.group(2)
+        parts = re.split(r'(?=<div class="sbi_item)', body)
+        kept, n = [], 0
+        for part in parts:
+            if not part.strip().startswith('<div class="sbi_item'):
+                kept.append(part); continue
+            n += 1
+            if n > PAGE:
+                part = part.replace('<div class="sbi_item',
+                                    '<div data-sbi-more style="display:none" class="sbi_item', 1)
+            kept.append(part)
+        return head + ''.join(kept)
+
+    text = re.sub(r'(<div id="sbi_images"[^>]*>)(.*?)(?=</div>\s*</div>\s*<div id="sbi_load")',
+                  paginate, text, flags=re.S)
+
+    if 'sbi_load_btn' in text and 'data-sbi-more' in text:
+        text = text.replace('</div>\n\n\t</div>\n\n</div>', '</div>\n\n\t</div>\n\n</div>', 1)
+        text += (
+            '\n<script>\n'
+            '/* Load More, without the WordPress AJAX endpoint: every tile is already\n'
+            '   in the page, hidden past the first batch. */\n'
+            '(function () {\n'
+            '  var grid = document.getElementById("sbi_images");\n'
+            '  var btn  = document.querySelector("#sbi_load .sbi_load_btn");\n'
+            '  if (!grid || !btn) return;\n'
+            '  var STEP = 20;\n'
+            '  function rest() { return grid.querySelectorAll(".sbi_item[data-sbi-more]"); }\n'
+            '  function sync() { if (!rest().length) btn.style.display = "none"; }\n'
+            '  btn.addEventListener("click", function () {\n'
+            '    var more = rest();\n'
+            '    for (var i = 0; i < STEP && i < more.length; i++) {\n'
+            '      more[i].removeAttribute("data-sbi-more");\n'
+            '      more[i].style.display = "";\n'
+            '    }\n'
+            '    sync();\n'
+            '  });\n'
+            '  sync();\n'
+            '})();\n'
+            '</script>\n')
     return text
 
 def rewrite_absolute(text):
@@ -319,16 +386,7 @@ def main():
         css = ('/* %s — inline CSS as served by the live page, in document order.\n'
                '   %d block(s): Nicepage per-section rules, theme kit, header, footer. */\n\n'
                % (slug, len(own))) + '\n\n'.join(own)
-        if 'sb_instagram' in content:
-            # Smash Balloon's own no-JS rule for the Load More button loses the
-            # cascade: #sb_instagram.sbi_no_js .sbi_load_btn{display:none} is
-            # (1,2,0), while #sb_instagram #sbi_load .sbi_load_btn{display:
-            # inline-block} is (2,1,0) and wins. The button needs the plugin's
-            # AJAX endpoint, so here it does nothing at all — hide it with a
-            # selector that actually beats the one setting it visible.
-            css += ('\n\n/* port: the Load More button needs the WordPress AJAX\n'
-                    '   endpoint, which does not exist here. */\n'
-                    '#sb_instagram.sbi_no_js #sbi_load .sbi_load_btn { display: none; }\n')
+
         css = rewrite(css)
         open(P('public/css', f'page-{slug}.css'), 'w', encoding='utf-8').write(css)
 
