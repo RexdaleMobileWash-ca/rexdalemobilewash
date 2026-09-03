@@ -41,6 +41,58 @@ SHARED_INLINE = {
 # so it is dropped rather than shipping two dead icon fonts.
 DROP_INLINE = {'d88326f7': 'np-woocommerce-base-fonts'}
 
+# ---------------------------------------------------------------- pruning
+# The live site loads the whole WordPress + Elementor + Nicepage stack on every
+# page regardless of what the page contains: ~1.4MB of CSS and JS per view. Each
+# entry below says what markup a sheet exists to style; if the page's DOM has none
+# of it, the sheet is dropped from that page.
+#
+# This is only safe because tools/verify/run-verify.sh pixel-diffs every page
+# against the captured original. Anything removed here is proven to change
+# nothing — if a diff appears, the rule is wrong, not the reference.
+WP_BLOCK   = r'class="[^"]*\bwp-block-'
+ELEMENTOR  = r'class="[^"]*\belementor-'
+HELLO      = r'class="[^"]*\bsite-(?:header|main|footer|navigation|branding)\b'
+INSTAGRAM  = r'\bsb_instagram\b|\bsbi_item\b'
+
+SHEET_NEEDS = {
+    'plugins-elementor-assets-lib-swiper-v8-css-swiper.min.css':      r'\bswiper\b',
+    'css-dist-block-library-style.min.css':                            WP_BLOCK,
+    'wp-global-styles.css':                                            WP_BLOCK,
+    'classic-theme-styles.css':                                        WP_BLOCK,
+    'core-block-supports.css':                                         WP_BLOCK,
+    'wp-emoji-styles.css':                        r'wp-smiley|class="[^"]*\bemoji\b',
+    'plugins-instagram-feed-css-sbi-styles.min.css':                   INSTAGRAM,
+    ('plugins-instagram-feed-vendor-smashballoon-framework-'
+     'Packages-Blocks-css-sb-elementor.css'):                          INSTAGRAM,
+    'plugins-contact-form-7-includes-css-styles.css':                  r'\bwpcf7\b',
+    'plugins-elementor-assets-css-frontend-lite.min.css':              ELEMENTOR,
+    'plugins-elementor-pro-assets-css-frontend-lite.min.css':          ELEMENTOR,
+    'uploads-elementor-css-post-381.css':                              ELEMENTOR,
+    'plugins-elementor-assets-css-modules-lazyload-frontend.min.css':  r'data-e-bg-lazyload',
+    # themes-hello-elementor-style.min.css is deliberately absent from this table.
+    # It looks theme-scoped but is the theme's global element reset — box-sizing and
+    # font inheritance for input/button/select/textarea among others — so every page
+    # depends on it even with no site-* markup. Dropping it grew the contact-form
+    # section by 91px on all 15 Nicepage pages. Always kept.
+    'themes-hello-elementor-theme.min.css':                            HELLO,
+    'plugins-nicepage-assets-css-froala.css':                 r'class="[^"]*\bfr-',
+}
+# nicepage.js (446KB, plus its jQuery dependency) drives the u-* menu, carousel and
+# parallax. The two theme pages and the 404 carry no u-* markup at all.
+NICEPAGE_MARKUP = r'class="[^"]*\bu-(?:body|header|footer|sheet|nav|btn|section|menu|carousel|image|text|group|layout|container)'
+
+def prune_sheets(vendor, dom):
+    """Drop sheets whose markup this page does not contain. Returns (kept, dropped)."""
+    kept, dropped = [], []
+    for href in vendor:
+        need = SHEET_NEEDS.get(os.path.basename(href))
+        if need is not None and not re.search(need, dom):
+            dropped.append(os.path.basename(href))
+        else:
+            kept.append(href)
+    return kept, dropped
+
 # ---------------------------------------------------------------- URL rewriting
 INSTA = {}
 def fetch(url, tries=4):
@@ -252,8 +304,16 @@ def main():
         # decide the header's colour treatment over each page's hero.
         battrs = re.search(r'<body([^>]*)>', doc, re.S).group(1)
         bcls   = re.search(r'class="([^"]*)"', battrs)
+
+        # decide the payload from the page's own DOM (header + content + footer,
+        # with the inline <style> blocks removed so CSS text never counts as markup)
+        dom = re.sub(r'<style.*?</style>', '', doc[doc.find('<body'):], flags=re.S)
+        vendor, dropped = prune_sheets(vendor, dom)
+        needs_nicepage = bool(re.search(NICEPAGE_MARKUP, dom))
+
         pages[slug] = dict(kind=kind, meta=meta, vendor=vendor, fonts=fonts,
-                           bodyClass=bcls.group(1) if bcls else '')
+                           bodyClass=bcls.group(1) if bcls else '',
+                           needsNicepage=needs_nicepage)
 
         open(P('src/html', f'{slug}.content.html'), 'w', encoding='utf-8').write(content)
         if footer: open(P('src/html', f'{slug}.footer.html'), 'w', encoding='utf-8').write(footer)
@@ -262,6 +322,7 @@ def main():
                             vendor_sheets=len(vendor), fonts=len(fonts),
                             dropped=[m for k, m in plan if k == 'dropped'],
                             not_served=[h for k, h in plan if k == 'skip'],
+                            pruned=dropped, needs_nicepage=needs_nicepage,
                             content_bytes=len(content))
     json.dump(pages,  open(S+'/pages_meta.json','w'), indent=1)
     json.dump(report, open(S+'/build_report.json','w'), indent=1)
@@ -282,10 +343,11 @@ def main():
     open(P('src/html','_header.neutral.html'),'w',encoding='utf-8').write(rewrite(NEUTRAL))
     json.dump(HDRMODEL, open(P('src/nav-active.json'),'w'), indent=1)
 
-    print(f"\n{'page':<26}{'kind':<10}{'inline':>7}{'cssKB':>7}{'vendor':>8}{'fonts':>7}{'markupKB':>10}")
-    for s, r in report.items():
-        print(f"{s:<26}{r['kind']:<10}{r['inline_blocks']:>7}{r['css_bytes']//1024:>7}"
-              f"{r['vendor_sheets']:>8}{r['fonts']:>7}{r['content_bytes']//1024:>10}")
+    print(f"\n{'page':<26}{'kind':<10}{'sheets':>8}{'pruned':>8}{'npjs':>6}{'cssKB':>7}{'markupKB':>10}")
+    for slug_, r in report.items():
+        print(f"{slug_:<26}{r['kind']:<10}{r['vendor_sheets']:>8}{len(r['pruned']):>8}"
+              f"{('yes' if r['needs_nicepage'] else 'no'):>6}{r['css_bytes']//1024:>7}"
+              f"{r['content_bytes']//1024:>10}")
     print(f"\ninstagram images localized: {sum(1 for v in INSTA.values() if v)}"
           f"  failed: {sum(1 for v in INSTA.values() if not v)}")
 

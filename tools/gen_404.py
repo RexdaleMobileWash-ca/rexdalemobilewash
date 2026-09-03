@@ -21,7 +21,8 @@ own=[x for k,x in plan if k=='inline']
 css=('/* 404 — inline CSS as served by the live 404 page, in document order. */\n\n'+'\n\n'.join(own))
 open(REPO+'/public/css/page-404.css','w',encoding='utf-8').write(B.rewrite(css))
 open(REPO+'/src/html/404.content.html','w',encoding='utf-8').write(content)
-vendor=[x for k,x in plan if k=='vendor']; fonts=list(dict.fromkeys(x for k,x in plan if k=='font'))
+dom=re.sub(r'<style.*?</style>','',doc[doc.find('<body'):],flags=re.S)
+vendor,_pruned=B.prune_sheets([x for k,x in plan if k=='vendor'], dom); fonts=list(dict.fromkeys(x for k,x in plan if k=='font'))
 bodyClass=re.search(r'class="([^"]*)"',re.search(r'<body([^>]*)>',doc,re.S).group(1)).group(1)
 j=lambda v: json.dumps(v,ensure_ascii=False)
 out=f'''---
@@ -37,6 +38,7 @@ export const prerender = true;
 <SiteBase
   slug="404"
   chrome="none"
+  needsNicepage={{false}}
   bodyClass={{{j(bodyClass)}}}
   title={{{j(meta['title'])}}}
   robots="noindex, follow"
@@ -47,4 +49,4 @@ export const prerender = true;
 </SiteBase>
 '''
 open(REPO+'/src/pages/404.astro','w',encoding='utf-8').write(out)
-print("404 ported: vendor sheets",len(vendor),"| inline blocks",len(own),"| markup",len(content),"bytes")
+print("404 ported: vendor sheets",len(vendor),"| pruned",len(_pruned),"| inline blocks",len(own),"| markup",len(content),"bytes")

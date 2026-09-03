@@ -13,6 +13,10 @@ const PORT_BASE = 'http://127.0.0.1:4321';   // the Astro build
 const REF_BASE  = 'http://127.0.0.1:4322';   // the original documents, same paths
 const FONTS = JSON.parse(fs.readFileSync(S + '/fontcache/index.json', 'utf8'));
 const BYFAMILY = JSON.parse(fs.readFileSync(S + '/fontcache/byfamily.json', 'utf8'));
+// VERIFY_WIDTH lets the same harness re-run at mobile widths; screenshots are
+// suffixed so a narrow run does not overwrite the desktop set.
+const VW = parseInt(process.env.VERIFY_WIDTH || '1440', 10);
+const TAG = VW === 1440 ? '' : '.' + VW;
 
 const PAGES = [
   'home:/', 'what-we-do:/what-we-do/', 'who-we-service:/who-we-service/', 'buildings:/buildings/',
@@ -165,11 +169,12 @@ function diffProbes(a, b) {
   for (const [slug, route] of PAGES) {
     const row = {};
     for (const [side, base] of [['ref', REF_BASE], ['port', PORT_BASE]]) {
-      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+      const ctx = await browser.newContext({ viewport: { width: VW, height: 900 },
+        deviceScaleFactor: 1, isMobile: VW < 768, hasTouch: VW < 768 });
       await setup(ctx);
       const page = await ctx.newPage();
       row[side] = await measure(page, base + route);
-      await page.screenshot({ path: `${OUT}/${slug}.${side}.png`, fullPage: true });
+      await page.screenshot({ path: `${OUT}/${slug}${TAG}.${side}.png`, fullPage: true });
       await ctx.close();
     }
     const d = diffProbes(row.ref, row.port);

@@ -36,6 +36,7 @@ for slug,d in sorted(meta.items()):
     if m.get('og'):          props.append(f'  og={{{js([list(x) for x in m["og"]])}}}')
     if m.get('twitter'):     props.append(f'  twitter={{{js([list(x) for x in m["twitter"]])}}}')
     if jsonld:               props.append('  jsonld={jsonld}')
+    if not d.get('needsNicepage', True): props.append('  needsNicepage={false}')
     props.append(f'  vendor={{{js(d["vendor"])}}}')
     props.append(f'  fonts={{{js(d["fonts"])}}}')
     lines.append('<SiteBase')

@@ -15,9 +15,10 @@ it is listed under [Deliberate differences](#deliberate-differences) below.
 | Pages | 17 routes + a ported 404 |
 | Source design | Nicepage 8.6.2 (15 pages) and the hello-elementor theme (2 pages + 404) |
 | Images | 110 files, all local under `public/images/` |
-| CSS | the live site's own sheets, vendored, in the live load order |
-| JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel and parallax need them) |
+| CSS | the live site's own sheets, vendored, in the live load order, pruned per page |
+| JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel, lightbox and parallax need them) |
 | Analytics | the same GTM container, `GTM-NMTLRJ63` |
+| Payload | ~1443KB → ~1081KB linked per page (25% smaller); see [Pruning](#pruning) |
 
 Routes: `/`, `/what-we-do/`, `/who-we-service/`, `/buildings/`, `/de-icing-service/`,
 `/fleet-washing/`, `/garbage-rooms/`, `/graffiti-removal/`,
@@ -100,22 +101,32 @@ Results at the time of writing:
 ```
 render parity ......... 17/17   computed styles, section geometry, element
                                 counts, internal links, body class, text
+                        17/17   again at 390px
 pixel diff ............ 17/17   full-page screenshots, byte-identical at 1440px
-behaviour ............. 11/11   dropdown open/close (incl. no focus latch after
-                                click), 9 submenu routes, carousel, off-canvas
+                        16/17   at 390px; the 17th is /about-us/, whose 19-frame
+                                animated GIF lands on a different frame. Its
+                                element geometry is identical (x75 y877 153x114)
+                                and the differing pixels lie inside that box.
+behaviour ............. 16/16   dropdown open/close (incl. no focus latch after
+                                click), 9 submenu routes, carousel, off-canvas,
+                                PhotoSwipe lightbox opens
+header transform ...... 15/15   model AND built pages, byte-exact
 broken images ......... 0
 failed requests ....... 0
 old-server references . 0
 ```
 
+Re-run at another width with `VERIFY_WIDTH=390 node tools/verify/compare-render.cjs`
+then `PIX_TAG=.390 python3 tools/verify/pixel-diff.py`.
+
 Fonts: declared Roboto / Roboto Slab / Open Sans / Audiowide; **computed**
 Audiowide on headings and Open Sans on body. Roboto loads but wins on only 2 of
 15 pages — the live site ships ~100KB of webfont that renders almost nowhere. Kept
-as-is, because this is a clone; see [Worth doing next](#worth-doing-next).
+as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Four, all forced, all verified:
+Five, all forced, all verified:
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -139,6 +150,12 @@ Four, all forced, all verified:
    Balloon's `admin-ajax` URL and feed nonce, and a Fast Cache loader config that
    also carried a nonce. The Elementor background-lazyload observer is **kept** —
    4 elements still depend on it.
+
+5. **The empty trailing `<div class="u-body">` is dropped.** The live site emits
+   one after the footer, inside `.nicepage-container`. It renders nothing, but
+   `nicepage.js` builds a hidden PhotoSwipe template per `.u-body`, so the live
+   site initialises one more than it needs. Visible behaviour is unchanged:
+   exactly one lightbox opens on both sides.
 
 ## Known issues carried over from the live site
 
@@ -167,12 +184,49 @@ Faithfully reproduced, not introduced here:
   `public/images/`.
 - No Worker, no hostname, no DNS. That is gates 9–13.
 
-## Worth doing next
+## Pruning
 
-The clone ships the live site's full payload — ~830KB of CSS and ~535KB of JS
-(jQuery + `nicepage.js`) — because trimming during a visual match is how silent
-regressions get in. Now that `npm run verify` exists as a pixel-level safety net,
-pruning is cheap and safe to attempt: `swiper.min.css` (no swiper markup anywhere),
-`block-library` on the Nicepage pages (no `wp-block-` markup), and the Roboto
-webfonts that lose the cascade are the obvious candidates. Prune, re-run verify,
-keep what stays 17/17.
+The live site loads the whole WordPress + Elementor + Nicepage stack on every page
+regardless of what the page contains. `SHEET_NEEDS` in `tools/build_site.py` says
+what markup each sheet exists to style; a sheet is dropped from any page whose DOM
+contains none of it. `nicepage.js` (446KB) is emitted only where `u-*` markup
+exists, which excludes the two theme pages and the 404.
+
+```
+                       sheets   linked payload
+Nicepage pages         17 → 4   ~1560KB → ~1230KB   (-21%)
+home / what-we-do      17 → 6   ~1580KB → ~1300KB   (-18%)
+lookbook               16 → 12   ~864KB →  ~354KB   (-59%)
+blog-post-title / 404  16 → 8    ~869KB →  ~236KB   (-73%)
+```
+
+Every page still renders pixel-identically to the captured original, so nothing
+removed here was doing anything.
+
+**One rule had to be corrected, and it is the interesting one.**
+`themes-hello-elementor-style.min.css` looks theme-scoped, but it is the theme's
+global element reset — box-sizing and font inheritance for `input`, `button`,
+`select`, `textarea`. Dropping it grew the contact-form section by **91px on all
+15 Nicepage pages**. The pixel diff caught it immediately; a grep for `site-header`
+would not have. It is now always kept, with a comment saying why.
+
+### Why `nicepage.css` itself is not pruned
+
+438KB of the remaining payload is `nicepage.css`, and roughly 172KB of it matches
+no class in any page's DOM. It is tempting, and it is **not** safely prunable by
+static analysis, because the framework builds class names at runtime:
+
+```js
+element.classList.add(this.animationInClass + "-played")   // animation states
+t.removeClass(n + " " + a)                                 // "u-nav-popup" + "-right"
+```
+
+The decisive case is PhotoSwipe. Four pages have `u-lightbox` galleries; `pswp`
+appears 117 times inside `nicepage.js`, and **zero** times in any built page — the
+entire lightbox DOM is created on click. "Absent from the DOM" therefore does not
+mean "unused", and the failure mode is an invisible broken hover or animation
+state that a load-time pixel diff cannot see.
+
+Doing this properly needs coverage measured while *exercising* the site (hover,
+click, open the lightbox, run the carousel), not a static scan. The behaviour
+suite in `tools/verify/compare-behaviour.cjs` is the start of that harness.

@@ -5,11 +5,13 @@ WORK = _os.environ.get('PORT_WORK') or _os.path.join(_ROOT, '.port-work')
 REPO_ROOT = _os.environ.get('PORT_REPO') or _ROOT
 
 from PIL import Image, ImageChops
-import glob, os, sys
+import glob, os, sys, re
 S=WORK+'/compare'
+TAG=os.environ.get('PIX_TAG','')
 rows=[]
-for ref in sorted(glob.glob(S+'/*.ref.png')):
+for ref in sorted(glob.glob(S+f'/*{TAG}.ref.png')):
     slug=os.path.basename(ref)[:-8]
+    if TAG=='' and re.search(r'\.\d+$', slug): continue   # skip other-width runs
     port=f'{S}/{slug}.port.png'
     if not os.path.exists(port): rows.append((slug,'NO PORT SHOT',0,0)); continue
     a=Image.open(ref).convert('RGB'); b=Image.open(port).convert('RGB')

@@ -27,11 +27,12 @@ interface Props {
   jsonld?: string | null;
   vendor: string[];
   fonts: string[];
+  needsNicepage?: boolean;
 }
 
 const {
   slug, chrome = 'nicepage', bodyClass, title, description, canonical,
-  robots, og = [], twitter = [], jsonld, vendor, fonts,
+  robots, og = [], twitter = [], jsonld, vendor, fonts, needsNicepage = true,
 } = Astro.props;
 
 const FAVICON = '/images/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp';
@@ -94,11 +95,13 @@ const GTM_ID = 'GTM-NMTLRJ63';
     <slot />
     {chrome === 'nicepage' && <Footer />}
 
-    {/* nicepage.js drives the off-canvas menu, the hero carousel and the
-        parallax sections, and it requires jQuery. hello-frontend.min.js is the
-        theme header's menu toggle, used by the two non-Nicepage pages. */}
+    {/* nicepage.js drives the off-canvas menu, the hero carousel and the parallax
+        sections; hello-frontend.min.js is the theme header's menu toggle. Both
+        need jQuery. The live site loaded all three everywhere — nicepage.js is
+        446KB and the theme pages carry no u-* markup at all, so it is emitted
+        only where something depends on it. */}
     <script is:inline src="/js/jquery.min.js"></script>
-    <script is:inline src="/js/nicepage.js"></script>
+    {needsNicepage && <script is:inline src="/js/nicepage.js" />}
     {chrome === 'none' && <script is:inline src="/js/hello-frontend.min.js" />}
   </body>
 </html>

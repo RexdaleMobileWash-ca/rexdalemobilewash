@@ -90,6 +90,39 @@ async function run(browser, base) {
     }
     await ctx.close();
   }
+  // ---------- lightbox ----------
+  // PhotoSwipe is bundled inside nicepage.js and builds its whole .pswp DOM on
+  // click. None of its classes exist statically — which is why nicepage.css
+  // cannot be pruned by "does this class appear in the DOM".
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await setup(ctx);
+    const p = await ctx.newPage();
+    await p.goto(base + '/de-icing-service/', { waitUntil: 'load' });
+    await p.waitForTimeout(1800);
+    res.lightboxTriggers = await p.evaluate(() =>
+      document.querySelectorAll('.u-lightbox, [class*="u-lightbox"]').length);
+    res.pswpBefore = await p.evaluate(() => document.querySelectorAll('.pswp').length);
+    res.galleryItems = await p.evaluate(() =>
+      document.querySelectorAll('.u-lightbox .u-gallery-item, .u-lightbox img').length);
+    await p.evaluate(() => {
+      const t = document.querySelector('.u-lightbox .u-gallery-item, .u-lightbox img');
+      if (t) t.click();
+    });
+    await p.waitForTimeout(1200);
+    // What matters is that exactly one lightbox OPENS. The count of inert hidden
+    // templates differs by one on purpose: the live site emits an empty trailing
+    // <div class="u-body"> after the footer, and nicepage.js builds a PhotoSwipe
+    // template per .u-body container. That div renders nothing (the pages are
+    // pixel-identical), so the port drops it and initialises one fewer template.
+    res.pswpOpen = await p.evaluate(() =>
+      [...document.querySelectorAll('.pswp')].filter((e) => e.getBoundingClientRect().width > 0).length);
+    res.pswpOpenClass = await p.evaluate(() => {
+      const e = document.querySelector('.pswp');
+      return e ? e.className : null;
+    });
+    await ctx.close();
+  }
   // ---------- mobile off-canvas ----------
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
