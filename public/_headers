@@ -20,9 +20,13 @@
   X-XSS-Protection: 1; mode=block
   Content-Security-Policy: upgrade-insecure-requests;
 
-# Live serves `text/html; charset=UTF-8`; static assets here serve bare
-# `text/html`. The documents all declare <meta charset="UTF-8">, so this only
-# removes the round trip through that declaration.
+# Live serves `text/html; charset=UTF-8`; the deployed Worker was serving bare
+# `text/html`. Note what this does NOT cover: `_headers` matches on the request
+# path, and every page is served from a directory (`/what-we-do/`), so only
+# /404.html and any other .html-suffixed request matches here. The asset runtime
+# appends `; charset=utf-8` to HTML itself under this compatibility_date — this
+# rule is the floor, not the mechanism. Either way the documents all declare
+# <meta charset="UTF-8">, so the encoding is never in doubt.
 /*.html
   Content-Type: text/html; charset=UTF-8
 

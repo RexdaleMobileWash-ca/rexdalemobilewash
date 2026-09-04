@@ -12,19 +12,20 @@ it is listed under [Deliberate differences](#deliberate-differences) below.
 
 | | |
 |---|---|
-| Pages | 17 routes + a ported 404 |
-| Source design | Nicepage 8.6.2 (15 pages) and the hello-elementor theme (2 pages + 404) |
+| Pages | 18 routes + a ported 404 |
+| Source design | Nicepage 8.6.2 (15 pages) and the hello-elementor theme (3 pages + 404) |
 | Images | 110 files, all local under `public/images/` |
 | CSS | the live site's own sheets, vendored, in the live load order, pruned per page |
 | JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel, lightbox and parallax need them) |
-| Analytics | the same GTM container, `GTM-NMTLRJ63` |
+| Analytics | the same GTM container, `GTM-NMTLRJ63`, with gtm4wp's `dataLayer` push |
+| Non-page files | the five Yoast sitemaps, `robots.txt`, `_headers`, `_redirects` |
 | Payload | ~1443KB → ~1081KB linked per page (25% smaller); see [Pruning](#pruning) |
 
 Routes: `/`, `/what-we-do/`, `/who-we-service/`, `/buildings/`, `/de-icing-service/`,
 `/fleet-washing/`, `/garbage-rooms/`, `/graffiti-removal/`,
 `/heavy-equipment-washing/`, `/parking-underground/`, `/storefronts-3/`,
 `/water-tanker-service/`, `/about-us/`, `/contact-us/`, `/residential/`,
-`/lookbook/`, `/blog-post-title/`.
+`/lookbook/`, `/blog-post-title/`, `/author/admin/`.
 
 ## Build
 
@@ -69,8 +70,8 @@ DEPLOY_HOST=https://rexdalemobilewash.ash-47a.workers.dev npm run verify:deploy
 ```
 
 ```
-pages 200 ........................ 17 of 17
-distinct assets fetched .......... 154   (153 × 200, 1 × 404)
+pages 200 ........................ 18 of 18
+distinct assets fetched .......... 293   (292 × 200, 1 × 404)
 assets on the old server ......... 0     *** the field that matters ***
 unknown path ..................... HTTP 404 + ported 404 page
 ```
@@ -78,6 +79,11 @@ unknown path ..................... HTTP 404 + ported 404 page
 The single 404 is `/wp-login.php` on `/blog-post-title/` — the "log in to leave a
 reply" link WordPress emitted. A dead link on a placeholder page, not a missing
 asset. It disappears if that page is redirected.
+
+`_headers` and `_redirects` cannot be checked from a static file server; they are
+read by the Workers asset runtime. `npx wrangler dev` against `dist/client`
+serves the real thing (it logs `Parsed N valid redirect rules` / `header rules`
+on startup) and is the way to check them without deploying.
 
 ### The review URL is public
 
@@ -114,7 +120,10 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
 
 1. Gate 11 wires the contact form to Resend at `/api/contact` — it is markup only
    today, on 14 pages.
-2. Gate 13 attaches the real domain, after the `.ca` zone is active.
+2. Gate 13 attaches the real domain, after the `.ca` zone is active, and with it
+   the zone's *Always Use HTTPS* setting; `http://` is not upgraded today.
+3. Gate 14 publishes the old-URL redirects. See
+   [Old addresses that do not resolve yet](#old-addresses-that-do-not-resolve-yet--gate-14).
 
 ## Images
 
@@ -211,6 +220,9 @@ is **generated**. Edit the pipeline in `tools/`, not the output.
 
 ```
 tools/capture/live-capture-2026-09-03.tar.gz   the 17 captured pages + the 404
+tools/capture/pages-extra/                     pages captured after that tarball was sealed
+tools/capture/instagram-tiles.html             all 157 harvested feed tiles
+tools/capture/sitemaps/                        the five Yoast sitemaps + their XSL
 tools/run-port.sh                              regenerate the port from that capture
 src/layouts/SiteBase.astro                     the document shell
 src/components/Header.astro                    one header + the active-state transform
@@ -218,11 +230,16 @@ src/components/Footer.astro                    one footer, byte-identical everyw
 src/html/<slug>.content.html                   each page's markup, injected with set:html
 public/css/page-<slug>.css                     each page's own inline CSS, hoisted out
 public/css/vendor/                             the live site's stylesheets, verbatim
+public/_headers, public/_redirects             edge config; _redirects is generated
 ```
 
 **The capture is the source of truth.** The live WordPress site is switched off at
 gate 16, after which it cannot be re-fetched — so the capture is committed, not
-just the scripts that consumed it.
+just the scripts that consumed it. That means *every* input, not only the page
+HTML: `instagram-tiles.html` was for a while the one exception, produced by
+`harvest-instagram.py` into the gitignored `.port-work/` and never committed, so
+a regeneration would have quietly rebuilt the feed with the 20 tiles in the
+captured page instead of all 157 — from an endpoint that no longer answers.
 
 ### The header
 
@@ -245,17 +262,17 @@ is itself the dropdown parent.
 npm run build
 npm run verify:no-old-host    # nothing in dist/ points at the WordPress server
 npm run verify:header         # header transform, byte-exact
-npm run verify                # full render + pixel + behaviour parity
+npm run verify                # full render + pixel + behaviour parity, vs the capture
 npm run verify:responsive     # horizontal overflow, 320px → 3440px
+npm run verify:head           # every <head>, vs the LIVE site
+npm run verify:live           # every page rendered side by side, vs the LIVE site
 ```
 
-> **What this comparison cannot see.** The reference is the captured document
-> with the same WordPress plugin scripts stripped that the port strips. So any
-> regression caused by *not shipping that JS* appears on both sides and the diff
-> reports a match — which is exactly how the Instagram grid shipped invisible.
-> The guard for that class of bug is the `images loaded but rendered invisible`
-> check, which flags an image that loaded fine but sits under a transparent
-> ancestor. Screenshots of the live site remain the backstop.
+The first four compare the port against the **capture**. The last two compare it
+against the **live site**, and they exist because those are two different
+questions — see [Against the live site](#against-the-live-site).
+
+### Against the capture
 
 `npm run verify` renders each **original captured document** and the **built page**
 in the same Chromium, from the same local assets and the same cached fonts, and
@@ -264,17 +281,15 @@ cosmetic: `nicepage.js` marks the current nav link and its dropdown parent
 `active` by matching `location.pathname` against the menu hrefs, so a reference
 served at any other path silently diverges and makes a correct port look broken.
 
-Results at the time of writing:
-
 ```
-render parity ......... 17/17   computed styles, section geometry, element
+render parity ......... 18/18   computed styles, section geometry, element
                                 counts, internal links, body class, text
-                        17/17   again at 390px
-pixel diff ............ 17/17   full-page screenshots, byte-identical at 1440px
-                        16/17   at 390px; the 17th is /about-us/, whose 19-frame
-                                animated GIF lands on a different frame. Its
-                                element geometry is identical (x75 y877 153x114)
-                                and the differing pixels lie inside that box.
+                        18/18   again at 390px
+pixel diff ............ 18/18   full-page screenshots, byte-identical at 1440px
+                        17/18   at 390px; the odd one is /about-us/, whose
+                                19-frame animated GIF lands on a different frame.
+                                Its element geometry is identical (x75 y877
+                                153x114) and the differing pixels lie in that box.
 behaviour ............. 16/16   dropdown open/close (incl. no focus latch after
                                 click), 9 submenu routes, carousel, off-canvas,
                                 PhotoSwipe lightbox opens
@@ -289,6 +304,57 @@ old-server references . 0
 Re-run at another width with `VERIFY_WIDTH=390 node tools/verify/compare-render.cjs`
 then `PIX_TAG=.390 python3 tools/verify/pixel-diff.py`.
 
+### Against the live site
+
+> **What the capture comparison cannot see.** The reference is the captured
+> document put through *the same rewrite pass the port uses*, with the same
+> WordPress plugin scripts stripped. So a bug in that pass, or a regression
+> caused by not shipping that JS, appears identically on both sides and the diff
+> reports a match. That is exactly how the Instagram grid shipped invisible —
+> and how it later shipped with its Load More block reparented out of the feed
+> and rendering a 1380px SVG, while the pixel diff read 17/17.
+
+`npm run verify:live` (`tools/verify/compare-live.cjs`) closes that hole. It
+renders the **live WordPress site** and the **port** in the same Chromium at the
+same route paths, with the same third-party tags blocked on both sides, and
+diffs computed styles, section geometry, a depth-6 DOM tree with boxes, element
+counts, text, internal and external links, image load state, console errors and
+failed requests — plus a full-page screenshot of each side.
+
+`npm run verify:head` (`tools/verify/compare-head.py`) does the same for the
+document `<head>`, which no render or pixel comparison can reach: none of it is
+painted. It compares *parsed* values, so entity spelling and attribute quoting
+do not register, and it skips the tags the port drops on purpose.
+
+Both default to `dist/client`; point them at a deployed host with
+`STAGE=https://… npm run verify:head`.
+
+```
+head parity ........... 18/18   tag for tag, once the deliberate
+                                /wp-content/uploads/ -> /images/ rewrite and
+                                entity/quote spelling are normalised
+render vs live ........ 16/18   at 1440px and again at 390px, exact document
+                                height and geometry on every page
+pixel vs live ......... 15/18   full-page, byte-identical
+```
+
+The three that are not byte-identical against live, and why:
+
+* `/` and `/what-we-do/` — identical in height, section geometry, tile count,
+  tile order and tile boxes; the photos inside the Instagram tiles differ. The
+  live plugin picks a *resized* variant per tile from a signed CDN URL, the port
+  paints the frozen full-res original, and rescaling the same photo from a
+  different source resolution lands a few levels off (max channel delta 16–88
+  across the tiles that painted). Live tiles that had not finished swapping in
+  when the screenshot fired account for the rest — that side is not
+  deterministic here, which is why the harness waits for the swap.
+* `/lookbook/` — the live gallery hotlinks a host with no DNS record; see
+  [Deliberate differences](#deliberate-differences).
+
+Also worth knowing: the harness fulfils every browser request from Node, because
+Chromium cannot open a TLS tunnel through this session's egress proxy. Run it
+with `NODE_USE_ENV_PROXY=1`.
+
 Fonts: declared Roboto / Roboto Slab / Open Sans / Audiowide; **computed**
 Audiowide on headings and Open Sans on body. Roboto loads but wins on only 2 of
 15 pages — the live site ships ~100KB of webfont that renders almost nowhere. Kept
@@ -296,7 +362,7 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Seven, all forced, all verified:
+Ten, all forced, all verified:
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -332,7 +398,9 @@ Seven, all forced, all verified:
    the original — it just no longer needs a server to page through.
 
    **Re-running the harvester will not work once the old site is off.** Its
-   output is committed for that reason.
+   output is committed for that reason, at `tools/capture/instagram-tiles.html` —
+   as the tiles *after* their photos were localised, so a regeneration needs
+   neither the AJAX endpoint nor the signed CDN URLs.
 
 6. **The Instagram grid is rendered in Smash Balloon's no-JS mode.** Without
    `sbi-scripts.js` the tiles ship as `.sbi_item.sbi_transition`, which the
@@ -351,6 +419,30 @@ Seven, all forced, all verified:
    site initialises one more than it needs. Visible behaviour is unchanged:
    exactly one lightbox opens on both sides.
 
+8. **WordPress's own discovery metadata is not carried.** Dropped from every
+   head: `rel=alternate` (the two RSS feeds and the per-page `wp-json` JSON),
+   `rel="https://api.w.org/"`, `rel=EditURI`, `rel=shortlink`, and the oembed
+   endpoints. Every one names a WordPress endpoint the new site does not serve,
+   so carrying them would advertise 404s. The same goes for the `Link:` response
+   header that repeats three of them. What this costs: `rel=shortlink` and the
+   `/?p=<id>` URLs it points at stop resolving — those, and the feeds, are old
+   addresses, which is gate 14's job, not the head's.
+
+9. **The plugin fingerprints are not carried.** Four `meta name="generator"`
+   tags (Security Check Plus 1.0.0, WordPress, Elementor 3.17.3, Nicepage
+   8.6.2), the `data-intl-tel-input-cdn-path` meta, and
+   `<link rel="dns-prefetch" href="//www.google.com">`. The generators would
+   assert a plugin stack that is not running; the prefetch warms a connection
+   for a reCAPTCHA the port does not load. None is read by anything.
+
+10. **Four response headers are reproduced from `public/_headers`, not from a
+    WAF.** `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection` and
+    `Content-Security-Policy: upgrade-insecure-requests` come from Sucuri on the
+    live site — a layer that does not exist here — so nothing in the ported
+    markup reproduced them and the port shipped with none. The same file
+    restores `max-age=86400` on `/images/`, `/css/` and `/js/`, which Cloudflare
+    static assets otherwise serve as `max-age=0, must-revalidate`.
+
 ## Known issues carried over from the live site
 
 Faithfully reproduced, not introduced here:
@@ -368,8 +460,10 @@ Faithfully reproduced, not introduced here:
 
 ## Not done here
 
-- **The contact form is markup only.** It appears on 14 pages and currently posts
-  nowhere. Wiring it to Resend at `/api/contact` is **gate 11**
+- **The contact form is markup only** — the largest remaining functional gap
+  against the live site. It appears on 14 pages; the fields, labels and layout
+  match, but pressing Send does nothing (the live site posts to Contact Form 7's
+  `wp-json` endpoint). Wiring it to Resend at `/api/contact` is **gate 11**
   (`wp-15-connect-contact-form`) — deliberately not done, and it comes before the
   domain is pointed at this site at gate 13.
 - **Images are in the repo, not Backblaze.** The stack serves images from
@@ -377,6 +471,30 @@ Faithfully reproduced, not introduced here:
   zero references to the old server; moving them is a path swap under
   `public/images/`.
 - No Worker, no hostname, no DNS. That is gates 9–13.
+
+### Old addresses that do not resolve yet — gate 14
+
+`public/_redirects` covers only what the live site itself redirects: `/favicon.ico`
+and the no-trailing-slash form of every route. Everything below still 404s and is
+gate 14's job (`wp-18-keep-old-links-working`), published as Cloudflare rules
+rather than from this repo:
+
+```
+/wp-content/uploads/*        84 media URLs; one prefix rewrite to /images/
+/?p=<id>                     the WordPress shortlinks; live 301s, here the
+                             query string is ignored and / is served
+/feed/, /comments/feed/      the two RSS feeds
+/wp-json/*                   52 URLs, including the oembed endpoints
+/index.php, date archives, blog pagination, /xmlrpc.php
+mixed-case paths             /What-We-Do/ is 200 on WordPress, 404 here —
+                             Cloudflare static assets are case-sensitive
+```
+
+One more that no redirect can fix from this repo: **`http://` is not upgraded**.
+The live site 301s `http://` to `https://`; the `workers.dev` hostname answers
+plain HTTP with 200. That is the zone's *Always Use HTTPS* setting, so it lands
+with the real hostname at gate 13. The `upgrade-insecure-requests` CSP in
+`public/_headers` covers sub-resources in the meantime, not the document itself.
 
 ## Pruning
 
