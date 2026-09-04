@@ -378,7 +378,7 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Ten, all forced, all verified:
+Eleven, all forced, all verified:
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -460,7 +460,18 @@ Ten, all forced, all verified:
    assert a plugin stack that is not running; the prefetch warms a connection
    for a reCAPTCHA the port does not load. None is read by anything.
 
-10. **Four response headers are reproduced from `public/_headers`, not from a
+10. **The absolute URLs in head metadata and JSON-LD resolve only after
+    cutover.** `canonical`, `og:url`, `og:image`, the schema.org `@id`s and the
+    Organization logo keep the production domain on purpose — that is what this
+    site will be — while their asset paths move from `/wp-content/uploads/` to
+    `/images/`. So `https://www.rexdalemobilewash.ca/images/2020/12/logoclear-1.png`
+    is a 404 *today*, because that host is still WordPress, and a 200 the moment
+    gate 13 points the domain here. Every one of those files is present under
+    `public/images/`, checked. The alternative — pointing them at the
+    `workers.dev` hostname — would bake the preview host into the client's
+    structured data.
+
+11. **Four response headers are reproduced from `public/_headers`, not from a
     WAF.** `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection` and
     `Content-Security-Policy: upgrade-insecure-requests` come from Sucuri on the
     live site — a layer that does not exist here — so nothing in the ported
