@@ -529,6 +529,15 @@ Eleven, all forced, all verified:
     and stylesheet as HTML. `wrangler dev` hides this — its runtime appends the
     charset by itself, production does not.
 
+    **The 404 response is the one exception and cannot be fixed here.** It is
+    served for an arbitrary unknown path, so the only rule that matches it is
+    `/*` — the one that would retype every asset. Live sends
+    `text/html; charset=UTF-8` on its 404 and the port sends bare `text/html`.
+    The page declares `<meta charset="UTF-8">` in its first bytes, so browsers
+    are unaffected. Closing it properly means a zone-level Transform Rule
+    (gate 13 territory) or turning every unknown path into an on-demand Worker
+    route, which is a worse trade than the header.
+
 ## Known issues carried over from the live site
 
 Faithfully reproduced, not introduced here:
