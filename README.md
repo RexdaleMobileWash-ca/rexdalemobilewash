@@ -420,9 +420,30 @@ Eleven, all forced, all verified:
 
 4. **Dead plugin bootstrap is stripped**: the WooCommerce `star`/`WooCommerce`
    `@font-face` block (0 elements site-wide use it), the CF7 REST config, Smash
-   Balloon's `admin-ajax` URL and feed nonce, and a Fast Cache loader config that
-   also carried a nonce. The Elementor background-lazyload observer is **kept** —
-   4 elements still depend on it.
+   Balloon's `admin-ajax` URL and feed nonce, and the `fast-cache-32` loader
+   config. The Elementor background-lazyload observer is **kept** — 4 elements
+   still depend on it.
+
+   > **The `fast-cache-32` one is not just dead bootstrap — read this before
+   > putting the live site back in front of anyone.** Every page on the live
+   > site, all 19, loads
+   > `wp-content/plugins/fast-cache-32/js/bsc-loader.js`. Its entire body:
+   > POST `{action: "bsc_sl_get_script", nonce}` to `admin-ajax.php`, take
+   > `payload.data.script` out of the JSON response, and run it —
+   > `el.text = source; document.body.appendChild(el)`. That is a remote-code
+   > loader: whoever controls that response executes arbitrary JavaScript in
+   > every visitor's browser, on every page view. The plugin name and the `bsc_`
+   > prefix (Binance Smart Chain) match a known family of WordPress
+   > crypto-drainer injections. Nothing on this site needs it and no legitimate
+   > cache plugin works this way.
+   >
+   > The port does not carry it, so the new site is clean. But it says the
+   > **WordPress install is very likely compromised**, which is worth acting on
+   > independently of this migration: the same access that planted this could
+   > have planted more, and the media library this port copied from came out of
+   > the same install. Nothing in `public/images/` executes, so the port is not a
+   > carrier — but the WordPress host, its database, and its credentials should
+   > be treated as untrusted rather than simply switched off at gate 16.
 
 5. **The Instagram feed carries all 157 posts, not the 20 the page shipped with.**
    The captured page holds one page of the feed; the rest only arrive from the
