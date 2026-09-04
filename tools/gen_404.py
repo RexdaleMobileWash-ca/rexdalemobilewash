@@ -25,6 +25,17 @@ dom=re.sub(r'<style.*?</style>','',doc[doc.find('<body'):],flags=re.S)
 vendor,_pruned=B.prune_sheets([x for k,x in plan if k=='vendor'], dom); fonts=list(dict.fromkeys(x for k,x in plan if k=='font'))
 bodyClass=re.search(r'class="([^"]*)"',re.search(r'<body([^>]*)>',doc,re.S).group(1)).group(1)
 j=lambda v: json.dumps(v,ensure_ascii=False)
+# og:url on the live 404 names whatever path was requested when this page was
+# captured. A prerendered 404 is one file served for every unknown path, so
+# there is no correct value to carry — dropping it beats freezing one. The rest
+# of the head metadata (which Yoast marks noindex anyway) comes across.
+og=[list(x) for x in meta['og'] if x[0]!='og:url']
+extra=[f"  lang={{{j(meta['lang'])}}}", f"  viewport={{{j(meta['viewport'])}}}"]
+if meta.get('profile'):   extra.append(f"  profile={{{j(meta['profile'])}}}")
+if meta.get('dataLayer'): extra.append(f"  dataLayer={{{j(meta['dataLayer'])}}}")
+if og:                    extra.append(f"  og={{{j(og)}}}")
+if meta.get('named'):     extra.append(f"  named={{{j([list(x) for x in meta['named']])}}}")
+extra='\n'.join(extra)
 out=f'''---
 // Ported from the live site's own 404 page, which uses the theme layout rather
 // than the Nicepage chrome. Prerendered so `dist/404.html` exists — that file is
@@ -42,6 +53,7 @@ export const prerender = true;
   bodyClass={{{j(bodyClass)}}}
   title={{{j(meta['title'])}}}
   robots="noindex, follow"
+{extra}
   vendor={{{j(vendor)}}}
   fonts={{{j(fonts)}}}
 >

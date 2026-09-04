@@ -375,6 +375,19 @@ def head_meta(doc):
         # page, which is why a render comparison cannot see it.
         'dataLayer':   g(r'var\s+dataLayer_content\s*=\s*(\{.*?\});') or None,
     }
+    # That pattern stops at the first `};`, and the value is emitted inside a
+    # <script>. Both are safe for every page in the capture — one flat object of
+    # string values — and neither is safe in general, so fail loudly rather than
+    # ship truncated or escaped-out JavaScript if a later capture differs.
+    if meta['dataLayer'] is not None:
+        try:
+            json.loads(meta['dataLayer'])
+        except ValueError as e:
+            raise SystemExit(f"dataLayer_content is not a complete JSON object "
+                             f"(nested braces truncate the match): {e}")
+        if '</' in meta['dataLayer']:
+            raise SystemExit("dataLayer_content contains '</' and would close the "
+                             "<script> it is emitted into")
     # Two plugins write this head with two different self-closing spellings —
     # Nicepage emits `"/>`, Yoast ` />` — and Yoast's article:* properties are
     # Open Graph too. Matching `property=` with an optional space therefore keeps
