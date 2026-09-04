@@ -461,11 +461,16 @@ Faithfully reproduced, not introduced here:
 ## Not done here
 
 - **The contact form is markup only** — the largest remaining functional gap
-  against the live site. It appears on 14 pages; the fields, labels and layout
-  match, but pressing Send does nothing (the live site posts to Contact Form 7's
-  `wp-json` endpoint). Wiring it to Resend at `/api/contact` is **gate 11**
-  (`wp-15-connect-contact-form`) — deliberately not done, and it comes before the
-  domain is pointed at this site at gate 13.
+  against the live site, and it does not fail quietly. The markup is
+  byte-identical to live, down to `action="/contact-us/#wpcf7-f372-p195-o1"
+  method="post"`, but Contact Form 7's JavaScript is not shipped. On the live
+  site that JS intercepts the submit and posts to CF7's `wp-json` endpoint, so
+  the page never navigates. Here nothing intercepts it, the browser performs the
+  native POST, and the Worker answers **405 with an empty body** — a blank error
+  page, on 14 pages. Wiring it to Resend at `/api/contact` is **gate 11**
+  (`wp-15-connect-contact-form`), which comes before the domain is pointed at
+  this site at gate 13, so the public never sees it. Anyone testing the preview
+  hostname will.
 - **Images are in the repo, not Backblaze.** The stack serves images from
   `img.rexdalemobilewash.ca` (AD-9, gates 4–7). They are local here so the port has
   zero references to the old server; moving them is a path swap under

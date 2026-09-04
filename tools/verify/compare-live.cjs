@@ -32,6 +32,9 @@ const PAGES = [
   'water-tanker-service:/water-tanker-service/', 'about-us:/about-us/', 'contact-us:/contact-us/',
   'residential:/residential/', 'lookbook:/lookbook/', 'blog-post-title:/blog-post-title/',
   'author-admin:/author/admin/',
+  // The 404 is a page too, and it is the one served for every unknown path on
+  // both sides. Any fixed path that exists on neither exercises it.
+  '404:/definitely-no-such-page-xyz/',
 ].map((s) => s.split(':')).filter(([slug]) => !ONLY || ONLY.includes(slug));
 
 const PROBES = [
