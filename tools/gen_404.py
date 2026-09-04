@@ -16,6 +16,10 @@ content=doc[b:doc.find('</body>')]
 content=B.STYLE_RE.sub('',content)
 content=re.sub(r'<script[^>]*src=[\'"][^\'"]*[\'"][^>]*>\s*</script>','',content)
 content=re.sub(r'<link[^>]*rel=[\'"]stylesheet[\'"][^>]*>','',content)
+# the layout emits GTM's <noscript> iframe; this page's captured body carries
+# its own copy, and shipped two (same as the hello-elementor pages did)
+content=re.sub(r'<noscript>\s*<iframe[^>]*googletagmanager\.com/ns\.html[^>]*>'
+               r'\s*</iframe>\s*</noscript>','',content,flags=re.S)
 content=B.rewrite(content)
 own=[x for k,x in plan if k=='inline']
 css=('/* 404 — inline CSS as served by the live 404 page, in document order. */\n\n'+'\n\n'.join(own))
@@ -23,7 +27,9 @@ open(REPO+'/public/css/page-404.css','w',encoding='utf-8').write(B.rewrite(css))
 open(REPO+'/src/html/404.content.html','w',encoding='utf-8').write(content)
 dom=re.sub(r'<style.*?</style>','',doc[doc.find('<body'):],flags=re.S)
 vendor,_pruned=B.prune_sheets([x for k,x in plan if k=='vendor'], dom); fonts=list(dict.fromkeys(x for k,x in plan if k=='font'))
-bodyClass=re.search(r'class="([^"]*)"',re.search(r'<body([^>]*)>',doc,re.S).group(1)).group(1)
+_battrs=re.search(r'<body([^>]*)>',doc,re.S).group(1)
+bodyClass=re.search(r'class="([^"]*)"',_battrs).group(1)
+bodyAttrs={k:v for k,v in re.findall(r'([a-zA-Z-]+)\s*=\s*"([^"]*)"',_battrs) if k!='class'}
 j=lambda v: json.dumps(v,ensure_ascii=False)
 # og:url on the live 404 names whatever path was requested when this page was
 # captured. A prerendered 404 is one file served for every unknown path, so
@@ -51,6 +57,7 @@ export const prerender = true;
   chrome="none"
   needsNicepage={{false}}
   bodyClass={{{j(bodyClass)}}}
+  bodyAttrs={{{j(bodyAttrs)}}}
   title={{{j(meta['title'])}}}
   robots="noindex, follow"
 {extra}

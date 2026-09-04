@@ -25,6 +25,8 @@ interface Props {
   og?: [string, string][];
   /** name=-addressed head metadata: twitter:* and msapplication-* */
   named?: [string, string][];
+  /** everything on the captured <body> except class (style, data-bg) */
+  bodyAttrs?: Record<string, string>;
   lang?: string;
   viewport?: string;
   /** the XFN profile link, on the hello-elementor pages only */
@@ -41,7 +43,7 @@ const {
   slug, chrome = 'nicepage', bodyClass, title, description, canonical,
   robots, og = [], named = [], jsonld, vendor, fonts, needsNicepage = true,
   lang = 'en', viewport = 'width=device-width, initial-scale=1.0', profile,
-  dataLayer,
+  dataLayer, bodyAttrs = {},
 } = Astro.props;
 
 const FAVICON = '/images/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp';
@@ -100,9 +102,20 @@ const GTM_ID = 'GTM-NMTLRJ63';
         f.parentNode.insertBefore(j, f);
       })(window, document, 'script', 'dataLayer', GTM_ID);
     </script>
+
+    {/* jQuery goes in the head because that is where WordPress enqueued it, and
+        the ported markup depends on it: /residential/ carries an inline block —
+        copied verbatim from the live page, as all this markup is — that calls
+        jQuery() at top level to bind the four wpcf7 result events. With jQuery
+        at the end of <body> that block parsed first and threw
+        "ReferenceError: jQuery is not defined", losing all four handlers.
+        nicepage.js stays at the end of <body>: it is 446KB, it self-initialises
+        on DOM ready, nothing in any page's markup calls into it at parse time,
+        and the behaviour suite passes with it there. */}
+    <script is:inline src="/js/jquery.min.js"></script>
   </head>
 
-  <body class={bodyClass} data-bg="">
+  <body class={bodyClass} {...bodyAttrs}>
     <noscript
       ><iframe
         src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
@@ -118,10 +131,9 @@ const GTM_ID = 'GTM-NMTLRJ63';
 
     {/* nicepage.js drives the off-canvas menu, the hero carousel and the parallax
         sections; hello-frontend.min.js is the theme header's menu toggle. Both
-        need jQuery. The live site loaded all three everywhere — nicepage.js is
-        446KB and the theme pages carry no u-* markup at all, so it is emitted
-        only where something depends on it. */}
-    <script is:inline src="/js/jquery.min.js"></script>
+        need jQuery, which is in the head (see above). The live site loaded all
+        three everywhere — nicepage.js is 446KB and the theme pages carry no u-*
+        markup at all, so it is emitted only where something depends on it. */}
     {needsNicepage && <script is:inline src="/js/nicepage.js" />}
     {chrome === 'none' && <script is:inline src="/js/hello-frontend.min.js" />}
   </body>

@@ -249,6 +249,27 @@ HTML: `instagram-tiles.html` was for a while the one exception, produced by
 a regeneration would have quietly rebuilt the feed with the 20 tiles in the
 captured page instead of all 157 — from an endpoint that no longer answers.
 
+### Where the JavaScript goes
+
+WordPress enqueued jQuery, `jquery-migrate` and `nicepage.js` in the **head**,
+and only `hello-frontend.min.js` at the end of `<body>`. The port moved all of
+them to the end of `<body>`, which is faster and was wrong: `/residential/`
+carries an inline block — copied verbatim from the live page, like all this
+markup — that calls `jQuery()` at top level to bind the four `wpcf7` result
+events. It parsed before jQuery loaded and threw
+`ReferenceError: jQuery is not defined`, losing all four handlers, on a page
+whose contact form is the point.
+
+So **jQuery is in the head**, where the live site put it. `nicepage.js` stays at
+the end of `<body>`: it is 446KB, it self-initialises on DOM ready, no page's
+markup calls into it at parse time, and the behaviour suite passes with it there.
+`jquery-migrate` is not shipped at all — the port serves the same jQuery build,
+so there is nothing for it to shim.
+
+A grep for inline `<script>` blocks touching `jQuery` or `$(` across every
+generated `src/html/*.content.html` finds exactly one, on `/residential/`. If a
+future capture adds another, this is the ordering it depends on.
+
 ### The header
 
 All 15 Nicepage pages served one header that differed *only* in WordPress's

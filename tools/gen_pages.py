@@ -31,6 +31,7 @@ for slug,d in sorted(meta.items()):
     lines.append('')
     props=[f'  slug="{slug}"', f'  chrome="{chrome}"',
            f'  bodyClass={{{js(d["bodyClass"])}}}',
+           f'  bodyAttrs={{{js(d.get("bodyAttrs") or {})}}}',
            f'  title={{{js(m["title"])}}}']
     if m.get('description'): props.append(f'  description={{{js(m["description"])}}}')
     if m.get('canonical'):   props.append(f'  canonical={{{js(m["canonical"])}}}')

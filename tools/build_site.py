@@ -462,6 +462,12 @@ def main():
         # WP/GTM/analytics script tags in the body are re-emitted by the layout, not the markup
         content = re.sub(r'<script[^>]*src=[\'"][^\'"]*[\'"][^>]*>\s*</script>', '', content)
         content = re.sub(r'<link[^>]*rel=[\'"]stylesheet[\'"][^>]*>', '', content)
+        # …and so is GTM's <noscript> iframe. On the Nicepage pages the captured
+        # content starts after </header>, so their copy is already outside it; on
+        # the hello-elementor pages it sits at the top of <body> and is inside,
+        # and those pages were shipping two.
+        content = re.sub(r'<noscript>\s*<iframe[^>]*googletagmanager\.com/ns\.html[^>]*>'
+                         r'\s*</iframe>\s*</noscript>', '', content, flags=re.S)
 
         content = rewrite(content)
         if footer: footer = rewrite(footer)
@@ -481,6 +487,11 @@ def main():
         # decide the header's colour treatment over each page's hero.
         battrs = re.search(r'<body([^>]*)>', doc, re.S).group(1)
         bcls   = re.search(r'class="([^"]*)"', battrs)
+        # …and everything else on <body>, carried rather than hardcoded. The 15
+        # Nicepage pages have style="" data-bg=""; the hello-elementor pages have
+        # neither, and the layout used to put data-bg="" on all of them.
+        bextra = {k: v for k, v in re.findall(r'([a-zA-Z-]+)\s*=\s*"([^"]*)"', battrs)
+                  if k != 'class'}
 
         # decide the payload from the page's own DOM (header + content + footer,
         # with the inline <style> blocks removed so CSS text never counts as markup)
@@ -491,6 +502,7 @@ def main():
         astro_route, url = route_of(slug)
         pages[slug] = dict(kind=kind, meta=meta, vendor=vendor, fonts=fonts,
                            bodyClass=bcls.group(1) if bcls else '',
+                           bodyAttrs=bextra,
                            needsNicepage=needs_nicepage,
                            route=astro_route, url=url)
 
