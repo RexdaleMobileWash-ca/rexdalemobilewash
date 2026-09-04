@@ -333,23 +333,28 @@ Both default to `dist/client`; point them at a deployed host with
 head parity ........... 18/18   tag for tag, once the deliberate
                                 /wp-content/uploads/ -> /images/ rewrite and
                                 entity/quote spelling are normalised
-render vs live ........ 16/18   at 1440px and again at 390px, exact document
-                                height and geometry on every page
-pixel vs live ......... 15/18   full-page, byte-identical
+render vs live ........ 16/18   exact document height on all 18; the two flagged
+                                are / and /what-we-do/, on the deliberate
+                                differences below (157 tiles inlined vs 20
+                                served, and the photo painted as a CSS
+                                background rather than an <img>)
+pixel vs live ......... 16/18   full-page, byte-identical
+outside the feed ...... 18/18   zero differing pixels anywhere on either of
+                                those two pages except inside #sbi_images, whose
+                                box is identical on both sides (home 150,2405
+                                1140x1452; what-we-do 200,991 1060x870)
 ```
 
-The three that are not byte-identical against live, and why:
-
-* `/` and `/what-we-do/` — identical in height, section geometry, tile count,
-  tile order and tile boxes; the photos inside the Instagram tiles differ. The
-  live plugin picks a *resized* variant per tile from a signed CDN URL, the port
-  paints the frozen full-res original, and rescaling the same photo from a
-  different source resolution lands a few levels off (max channel delta 16–88
-  across the tiles that painted). Live tiles that had not finished swapping in
-  when the screenshot fired account for the rest — that side is not
-  deterministic here, which is why the harness waits for the swap.
-* `/lookbook/` — the live gallery hotlinks a host with no DNS record; see
-  [Deliberate differences](#deliberate-differences).
+Inside that box the two sides show the **same posts, in the same order, cropped
+the same way** — the pixels differ because the live plugin picks a *resized*
+variant per tile from a signed CDN URL while the port paints the frozen full-res
+original, so the same photo is resampled from a different source resolution. On
+`/what-we-do/` that is the whole story and it measures as noise: mean |delta|
+**4.2**, 97.3% of pixels within 32 levels. On `/` the number is larger (mean 30)
+for a reason that is not the port's: 4 of the 20 live tiles never finished
+painting before the screenshot, and a white tile against a photo saturates the
+difference. The live side is not deterministic here, which is why the harness
+waits for the swap before shooting.
 
 Also worth knowing: the harness fulfils every browser request from Node, because
 Chromium cannot open a TLS tunnel through this session's egress proxy. Run it
