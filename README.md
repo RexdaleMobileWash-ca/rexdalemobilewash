@@ -31,7 +31,7 @@ Routes: `/`, `/what-we-do/`, `/who-we-service/`, `/buildings/`, `/de-icing-servi
 
 ```bash
 npm install          # do NOT use --omit=optional; it strips the rolldown native binding
-npm run build        # 18 pages, every one prerendered
+npm run build        # 19 pages, every one prerendered
 ```
 
 The Worker is configured by `wrangler.jsonc`. Host is Cloudflare Workers (AD-1);
