@@ -117,7 +117,11 @@ async function measure(page, url) {
     }
     const imgs = [...document.images];
     out.images.total = imgs.length;
-    out.images.broken = imgs.filter((i) => i.complete && i.naturalWidth === 0).map((i) => (i.currentSrc || i.src).slice(0, 120));
+    // an <img> with no src is not broken — the Instagram tiles past the first
+    // page deliberately park their URL in data-sbi-src so a hidden tile costs
+    // no request until Load More reveals it
+    out.images.broken = imgs.filter((i) => (i.currentSrc || i.getAttribute('src'))
+      && i.complete && i.naturalWidth === 0).map((i) => (i.currentSrc || i.src).slice(0, 120));
     out.images.brokenCount = out.images.broken.length;
 
     // An image that loaded fine but renders at zero opacity because an ANCESTOR

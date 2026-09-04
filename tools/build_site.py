@@ -269,6 +269,16 @@ def static_instagram(text):
             if n > PAGE:
                 part = part.replace('<div class="sbi_item',
                                     '<div data-sbi-more style="display:none" class="sbi_item', 1)
+                # …and park the photo's URL out of `src`. `display:none` does not
+                # stop a browser fetching an <img src>: with it left in place the
+                # home page pulled all 158 photos on load — 38.4MB against the
+                # 2.5MB the visible 20 tiles need, and against the 20 the live
+                # feed requests. The CSS background on .sbi_photo is what the
+                # no-JS mode actually paints and IS skipped while the tile is
+                # display:none, so only the <img> had to be dealt with. Load More
+                # puts the src back as it reveals each tile.
+                part = re.sub(r'(<img[^>]*?)\ssrc="([^"]*)"',
+                              r'\1 data-sbi-src="\2"', part, count=1)
             kept.append(part)
         return head + ''.join(kept)
 
@@ -293,6 +303,11 @@ def static_instagram(text):
             '    for (var i = 0; i < STEP && i < more.length; i++) {\n'
             '      more[i].removeAttribute("data-sbi-more");\n'
             '      more[i].style.display = "";\n'
+            '      var img = more[i].querySelector("img[data-sbi-src]");\n'
+            '      if (img) {\n'
+            '        img.src = img.getAttribute("data-sbi-src");\n'
+            '        img.removeAttribute("data-sbi-src");\n'
+            '      }\n'
             '    }\n'
             '    sync();\n'
             '  });\n'

@@ -182,6 +182,14 @@ EXIF/XMP from 164 files before upload, at the container level (JPEG APP1
 segments, PNG eXIf/iTXt chunks) so the compressed image data is untouched: all
 164 verified pixel-identical afterwards, 1.8MB of metadata gone.
 
+**That run covered the Backblaze copy only.** `public/images/`, which is what the
+site actually serves until gate 7, was never passed through it, and three files
+there — `2020/12/DE-ICING-1-1024x1024-{1,2,3}-1024x1024.jpg` — were still
+shipping a GPS IFD. `python3 tools/strip-exif.py public/images` has now been run
+against it too: 62 files rewritten, all 62 pixel-identical, 245KB of metadata
+gone, 0 files left carrying a coordinate. Run it against any directory the site
+serves from, not only the one it uploads from.
+
 The upload used an application key **scoped to this one bucket**, not the master
 key — the master key can delete every other client's bucket. The key value lives
 in `.port-work/b2-key.env` (gitignored, chmod 600) and belongs in the password
@@ -290,9 +298,12 @@ pixel diff ............ 18/18   full-page screenshots, byte-identical at 1440px
                                 19-frame animated GIF lands on a different frame.
                                 Its element geometry is identical (x75 y877
                                 153x114) and the differing pixels lie in that box.
-behaviour ............. 16/16   dropdown open/close (incl. no focus latch after
+behaviour ............. 20/20   dropdown open/close (incl. no focus latch after
                                 click), 9 submenu routes, carousel, off-canvas,
-                                PhotoSwipe lightbox opens
+                                PhotoSwipe lightbox opens, and the Instagram
+                                pager: 20 tiles shown / loaded / painted from 21
+                                requests, 40 after one click, 157 with the
+                                button gone once exhausted
 header transform ...... 15/15   model AND built pages, byte-exact
 broken images ......... 0
 images loaded but
@@ -401,6 +412,15 @@ Ten, all forced, all verified:
    `public/images/instagram/`. The page still shows 20 with a working **Load
    More** that reveals 20 more per click, so the rendered page is identical to
    the original — it just no longer needs a server to page through.
+
+   The hidden tiles park their photo URL in `data-sbi-src`, and the pager puts it
+   back as it reveals each one. `display:none` does **not** stop a browser
+   fetching an `<img src>`: with the URL left in place the home page pulled all
+   158 photos on load, 38.4MB against the 2.5MB the visible tiles need and
+   against the 20 photos the live feed requests. It is 21 requests now, and 158
+   only if a visitor clicks through the whole feed. The CSS background on
+   `.sbi_photo` — which is what the no-JS mode actually paints — is skipped by
+   the browser while the tile is hidden, so only the `<img>` needed handling.
 
    **Re-running the harvester will not work once the old site is off.** Its
    output is committed for that reason, at `tools/capture/instagram-tiles.html` —

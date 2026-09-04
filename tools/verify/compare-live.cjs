@@ -150,7 +150,8 @@ async function measure(page, url) {
   // to wait for — its tiles are painted by CSS — so this is a no-op there).
   await page.waitForFunction(() => {
     const imgs = [...document.querySelectorAll('#sbi_images .sbi_item .sbi_photo img')]
-      .filter((i) => i.getBoundingClientRect().height > 1 || getComputedStyle(i).display === 'none');
+      // a tile parked behind Load More has no src yet and is not waiting on anything
+      .filter((i) => i.getAttribute('src'));
     if (!imgs.length) return true;
     return imgs.every((i) => !/placeholder\.png/.test(i.currentSrc || i.src) && i.naturalWidth > 1);
   }, null, { timeout: 45000 }).catch(() => {});
@@ -202,7 +203,10 @@ async function measure(page, url) {
 
     const imgs = [...document.images];
     out.images.total = imgs.length;
-    out.images.broken = imgs.filter((i) => i.complete && i.naturalWidth === 0)
+    // an <img> with no src is not broken — the Instagram tiles past the first
+    // page deliberately park their URL in data-sbi-src
+    out.images.broken = imgs.filter((i) => (i.currentSrc || i.getAttribute('src'))
+      && i.complete && i.naturalWidth === 0)
       .map((i) => (i.currentSrc || i.src).slice(0, 140));
     out.images.brokenCount = out.images.broken.length;
     const effOpacity = (el) => {

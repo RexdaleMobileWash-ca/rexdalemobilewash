@@ -123,6 +123,55 @@ async function run(browser, base) {
     });
     await ctx.close();
   }
+  // ---------- Instagram Load More ----------
+  // Both sides run the port's own client-side pager (make_reference.py puts the
+  // captured document through the same rewrite), so this is not really a
+  // comparison — it is an invariant, and the numbers below are absolute. It
+  // exists because the pager had no test at all, and because the tiles past the
+  // first page now park their photo in data-sbi-src: `display:none` does not
+  // stop a browser fetching an <img src>, so leaving it there pulled all 158
+  // photos on load. If a tile is revealed without its src coming back, the grid
+  // fills with blanks and nothing else here would notice.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await setup(ctx);
+    const p = await ctx.newPage();
+    let tileRequests = 0;
+    p.on('request', (r) => { if (/\/images\/instagram\//.test(r.url())) tileRequests++; });
+    await p.goto(base + '/', { waitUntil: 'load' });
+    await p.evaluate(async () => {
+      const s = innerHeight;
+      for (let y = 0; y < document.documentElement.scrollHeight; y += s) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
+      scrollTo(0, 0);
+    });
+    await p.waitForTimeout(2500);
+    const grid = () => p.evaluate(() => {
+      const items = [...document.querySelectorAll('.sbi_item')];
+      const shown = items.filter((i) => i.getBoundingClientRect().height > 1);
+      const btn = document.querySelector('#sbi_load .sbi_load_btn');
+      return {
+        shown: shown.length,
+        // every revealed tile must have its photo back, loaded, and painted
+        loaded: shown.filter((i) => { const m = i.querySelector('img'); return m && m.naturalWidth > 1; }).length,
+        painted: shown.filter((i) => getComputedStyle(i.querySelector('.sbi_photo')).backgroundImage !== 'none').length,
+        btn: btn ? getComputedStyle(btn).display !== 'none' : null,
+      };
+    });
+    res.igOnLoad = await grid();
+    res.igTilesFetchedOnLoad = tileRequests;
+    await p.click('#sbi_load .sbi_load_btn');
+    await p.waitForTimeout(2500);
+    res.igAfterOneClick = await grid();
+    for (let i = 0; i < 12; i++) {
+      const more = await p.evaluate(() => { const b = document.querySelector('#sbi_load .sbi_load_btn'); return b && getComputedStyle(b).display !== 'none'; });
+      if (!more) break;
+      await p.click('#sbi_load .sbi_load_btn');
+      await p.waitForTimeout(700);
+    }
+    await p.waitForTimeout(3500);
+    res.igExhausted = await grid();
+    await ctx.close();
+  }
   // ---------- mobile off-canvas ----------
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
