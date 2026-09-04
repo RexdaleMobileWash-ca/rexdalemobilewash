@@ -238,7 +238,7 @@ src/components/Footer.astro                    one footer, byte-identical everyw
 src/html/<slug>.content.html                   each page's markup, injected with set:html
 public/css/page-<slug>.css                     each page's own inline CSS, hoisted out
 public/css/vendor/                             the live site's stylesheets, verbatim
-public/_headers, public/_redirects             edge config; _redirects is generated
+public/_headers, public/_redirects             edge config, both generated
 ```
 
 **The capture is the source of truth.** The live WordPress site is switched off at
@@ -519,7 +519,15 @@ Eleven, all forced, all verified:
     live site — a layer that does not exist here — so nothing in the ported
     markup reproduced them and the port shipped with none. The same file
     restores `max-age=86400` on `/images/`, `/css/` and `/js/`, which Cloudflare
-    static assets otherwise serve as `max-age=0, must-revalidate`.
+    static assets otherwise serve as `max-age=0, must-revalidate`, and puts the
+    `charset=UTF-8` back on HTML responses.
+
+    That last one needs **one rule per route**, which is why `_headers` is
+    generated rather than hand-written. `_headers` matches on the *request*
+    path; every page is requested as a directory (`/what-we-do/`), so a
+    `/*.html` rule reaches only `/404.html`, and `/*` would retype every image
+    and stylesheet as HTML. `wrangler dev` hides this — its runtime appends the
+    charset by itself, production does not.
 
 ## Known issues carried over from the live site
 

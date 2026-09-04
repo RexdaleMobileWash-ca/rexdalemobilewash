@@ -35,7 +35,7 @@ echo "==> generating 404"
 python3 tools/gen_404.py
 echo "==> carrying over the XML sitemaps"
 python3 tools/gen_sitemaps.py
-echo "==> generating edge redirects"
-python3 tools/gen_redirects.py
+echo "==> generating edge redirects and headers"
+python3 tools/gen_edge.py
 echo
 echo "done. Now: npm run build"
