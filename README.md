@@ -50,8 +50,17 @@ can run, while every page stays a prerendered file.
 **Live at https://rexdalemobilewash.ash-47a.workers.dev**
 
 Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
-`rexdalemobilewash`. Workers Builds is connected: push to `main` and Cloudflare
-builds and deploys, about a minute end to end.
+`rexdalemobilewash`.
+
+> **Workers Builds is connected but is not firing.** Pushes to `main` on
+> 2026-09-04 produced no build: Cloudflare's last automatic deployment is
+> 2026-09-03T18:03, and GitHub shows no check run or commit status for any of
+> those commits. The account token in this environment is refused on the
+> Workers Builds API (`/accounts/…/builds/repos` → 10000 Authentication error),
+> so the cause is not visible from here — check Workers →
+> `rexdalemobilewash` → Settings → Builds in the dashboard. Until it is fixed,
+> **a push to `main` does not deploy**; deploy with `npm run build && npx
+> wrangler deploy` and re-run the checks against the deployed host.
 
 ```
 worker .......................... rexdalemobilewash
@@ -359,21 +368,30 @@ painted. It compares *parsed* values, so entity spelling and attribute quoting
 do not register, and it skips the tags the port drops on purpose.
 
 Both default to `dist/client`; point them at a deployed host with
-`STAGE=https://… npm run verify:head`.
+`STAGE=https://… npm run verify:head`. Do that after every deploy — several of
+the differences these tools found existed only on the deployed Worker, because
+it was serving an older build than the repo.
+
+> **Cache-bust when checking a deployed host.** A 404 you provoked while probing
+> is cached at the edge and will keep answering 404 after the file exists. Add
+> `?cb=$RANDOM`. Two rounds of "the deploy failed" here were that.
+
+Measured against the **deployed** Worker, not a local build:
 
 ```
 head parity ........... 18/18   tag for tag, once the deliberate
                                 /wp-content/uploads/ -> /images/ rewrite and
                                 entity/quote spelling are normalised
-render vs live ........ 16/18   exact document height on all 18; the two flagged
-                                are / and /what-we-do/, on the deliberate
-                                differences below (157 tiles inlined vs 20
-                                served, and the photo painted as a CSS
-                                background rather than an <img>)
-pixel vs live ......... 16/18   full-page, byte-identical
-outside the feed ...... 18/18   zero differing pixels anywhere on either of
-                                those two pages except inside #sbi_images, whose
-                                box is identical on both sides (home 150,2405
+render vs live ........ 17/19   exact document height on all 19 (the 18 routes
+                                plus the 404). The two flagged are / and
+                                /what-we-do/, on the deliberate differences
+                                below: 157 tiles inlined against 20 served, and
+                                the photo painted as a CSS background rather
+                                than an <img>
+pixel vs live ......... 17/19   full-page, byte-identical
+outside the feed ...... 19/19   ZERO differing pixels anywhere on those two
+                                pages except inside #sbi_images, whose box is
+                                identical on both sides (home 150,2405
                                 1140x1452; what-we-do 200,991 1060x870)
 ```
 
