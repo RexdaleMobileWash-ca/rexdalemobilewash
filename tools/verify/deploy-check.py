@@ -21,7 +21,7 @@ ROUTES = ['/', '/what-we-do/', '/who-we-service/', '/buildings/', '/de-icing-ser
           '/fleet-washing/', '/garbage-rooms/', '/graffiti-removal/',
           '/heavy-equipment-washing/', '/parking-underground/', '/storefronts-3/',
           '/water-tanker-service/', '/about-us/', '/contact-us/', '/residential/',
-          '/lookbook/', '/blog-post-title/']
+          '/lookbook/', '/blog-post-title/', '/author/admin/']
 
 # asset- and API-shaped references to the site being migrated away from
 OLD = re.compile(r'(?:www\.)?(?:new\.)?rexdalemobilewash\.ca/'

@@ -8,6 +8,7 @@ dist/
 
 # verification workdir (captured pages are extracted here, plus font cache and screenshots)
 .port-work/
+.port-work-*/
 
 # python bytecode from the port pipeline
 __pycache__/

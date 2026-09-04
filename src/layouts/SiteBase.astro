@@ -23,7 +23,14 @@ interface Props {
   canonical?: string;
   robots?: string;
   og?: [string, string][];
-  twitter?: [string, string][];
+  /** name=-addressed head metadata: twitter:* and msapplication-* */
+  named?: [string, string][];
+  lang?: string;
+  viewport?: string;
+  /** the XFN profile link, on the hello-elementor pages only */
+  profile?: string;
+  /** gtm4wp's dataLayer_content object, verbatim, as JSON */
+  dataLayer?: string;
   jsonld?: string | null;
   vendor: string[];
   fonts: string[];
@@ -32,7 +39,9 @@ interface Props {
 
 const {
   slug, chrome = 'nicepage', bodyClass, title, description, canonical,
-  robots, og = [], twitter = [], jsonld, vendor, fonts, needsNicepage = true,
+  robots, og = [], named = [], jsonld, vendor, fonts, needsNicepage = true,
+  lang = 'en', viewport = 'width=device-width, initial-scale=1.0', profile,
+  dataLayer,
 } = Astro.props;
 
 const FAVICON = '/images/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp';
@@ -40,17 +49,18 @@ const GTM_ID = 'GTM-NMTLRJ63';
 ---
 
 <!doctype html>
-<html lang="en-US">
+<html lang={lang}>
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content={viewport} />
+    {profile && <link rel="profile" href={profile} />}
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
     {robots && <meta name="robots" content={robots} />}
     {canonical && <link rel="canonical" href={canonical} />}
 
     {og.map(([p, c]) => <meta property={p} content={c} />)}
-    {twitter.map(([n, c]) => <meta name={n} content={c} />)}
+    {named.map(([n, c]) => <meta name={n} content={c} />)}
 
     <link rel="icon" href={FAVICON} sizes="32x32" />
     <link rel="icon" href={FAVICON} sizes="192x192" />
@@ -65,6 +75,17 @@ const GTM_ID = 'GTM-NMTLRJ63';
     <link rel="stylesheet" href={`/css/page-${slug}.css`} />
 
     {jsonld && <script type="application/ld+json" set:html={jsonld} />}
+
+    {/* gtm4wp's page classification, pushed before the loader exactly as the
+        live site does it. The client's GTM container can read pagePostType,
+        pagePostType2 and pagePostAuthor; drop this and those tags stop firing,
+        silently and invisibly. */}
+    {dataLayer && (
+      <script is:inline set:html={`
+	var gtm4wp_datalayer_name = "dataLayer";
+	var dataLayer = dataLayer || [];
+	dataLayer.push(${dataLayer});`} />
+    )}
 
     {/* Google Tag Manager — same container as the live site */}
     <script is:inline define:vars={{ GTM_ID }}>

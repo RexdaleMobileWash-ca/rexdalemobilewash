@@ -1,0 +1,45 @@
+# Response headers, to match what the live site sends.
+#
+# On the live site these four come from Sucuri, the WAF in front of WordPress —
+# not from WordPress — so nothing in the ported markup reproduces them and the
+# port shipped with none of them. Cloudflare Workers static assets read this
+# file; @astrojs/cloudflare prepends its own /_astro/* Cache-Control rule to it
+# at build time, so keep this file to rules the adapter does not own.
+#
+# Live for comparison:
+#   x-frame-options: SAMEORIGIN
+#   x-content-type-options: nosniff
+#   x-xss-protection: 1; mode=block
+#   content-security-policy: upgrade-insecure-requests;
+#
+# X-XSS-Protection is carried for parity only. Chrome removed the auditor it
+# controls and the header does nothing there; it is still honoured by Safari.
+/*
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  X-XSS-Protection: 1; mode=block
+  Content-Security-Policy: upgrade-insecure-requests;
+
+# Live serves `text/html; charset=UTF-8`; static assets here serve bare
+# `text/html`. The documents all declare <meta charset="UTF-8">, so this only
+# removes the round trip through that declaration.
+/*.html
+  Content-Type: text/html; charset=UTF-8
+
+# Yoast serves the sitemaps as text/xml and keeps them out of the index.
+/*.xml
+  Content-Type: text/xml; charset=UTF-8
+  X-Robots-Tag: noindex, follow
+
+# The live site sends `cache-control: max-age=86400` on every image, stylesheet
+# and script. Cloudflare static assets default to `max-age=0, must-revalidate`
+# for anything without a content hash in its name, so without these three rules
+# the port revalidates all ~1MB of CSS and every photo on every page view — a
+# regression against the live site that no render comparison can see.
+# /_astro/* is not listed: the adapter owns that rule and marks it immutable.
+/images/*
+  Cache-Control: max-age=86400
+/css/*
+  Cache-Control: max-age=86400
+/js/*
+  Cache-Control: max-age=86400

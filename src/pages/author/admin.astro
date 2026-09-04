@@ -1,0 +1,32 @@
+---
+// Ported from the live page. The markup in ../html/author-admin.content.html is the
+// live site's own HTML, with asset URLs pointed at this repo; it is injected
+// with set:html so nothing is re-typed or reformatted.
+import SiteBase from '../../layouts/SiteBase.astro';
+import content from '../../html/author-admin.content.html?raw';
+
+export const prerender = true;
+
+const jsonld = "{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Organization\",\"@id\":\"https://www.rexdalemobilewash.ca/#organization\",\"name\":\"Rexdale Mobile Wash Inc.\",\"url\":\"https://www.rexdalemobilewash.ca/\",\"sameAs\":[\"https://www.facebook.com/rexdalemobilewash\",\"https://www.instagram.com/rexdalemobilewash/\",\"https://twitter.com/RexMobileWash\"],\"logo\":{\"@type\":\"ImageObject\",\"@id\":\"https://www.rexdalemobilewash.ca/#logo\",\"inLanguage\":\"en\",\"url\":\"https://www.rexdalemobilewash.ca/images/2020/12/logoclear-1.png\",\"contentUrl\":\"https://www.rexdalemobilewash.ca/images/2020/12/logoclear-1.png\",\"width\":1142,\"height\":264,\"caption\":\"Rexdale Mobile Wash Inc.\"},\"image\":{\"@id\":\"https://www.rexdalemobilewash.ca/#logo\"}},{\"@type\":\"WebSite\",\"@id\":\"https://www.rexdalemobilewash.ca/#website\",\"url\":\"https://www.rexdalemobilewash.ca/\",\"name\":\"Rexdale Mobile Wash Inc.\",\"description\":\"We Make You Shine!\",\"publisher\":{\"@id\":\"https://www.rexdalemobilewash.ca/#organization\"},\"potentialAction\":[{\"@type\":\"SearchAction\",\"target\":{\"@type\":\"EntryPoint\",\"urlTemplate\":\"https://www.rexdalemobilewash.ca/?s={search_term_string}\"},\"query-input\":\"required name=search_term_string\"}],\"inLanguage\":\"en\"},{\"@type\":\"ProfilePage\",\"@id\":\"https://www.rexdalemobilewash.ca/author/admin/#webpage\",\"url\":\"https://www.rexdalemobilewash.ca/author/admin/\",\"name\":\"admin, Author at Rexdale Mobile Wash Inc.\",\"isPartOf\":{\"@id\":\"https://www.rexdalemobilewash.ca/#website\"},\"breadcrumb\":{\"@id\":\"https://www.rexdalemobilewash.ca/author/admin/#breadcrumb\"},\"inLanguage\":\"en\",\"potentialAction\":[{\"@type\":\"ReadAction\",\"target\":[\"https://www.rexdalemobilewash.ca/author/admin/\"]}]},{\"@type\":\"BreadcrumbList\",\"@id\":\"https://www.rexdalemobilewash.ca/author/admin/#breadcrumb\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Home\",\"item\":\"https://www.rexdalemobilewash.ca/\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Archives for admin\"}]},{\"@type\":\"Person\",\"@id\":\"https://www.rexdalemobilewash.ca/#/schema/person/3aaa07f9c1c400f39a4aa8452d1faa60\",\"name\":\"admin\",\"sameAs\":[\"https://www.rexdalemobilewash.ca\"],\"mainEntityOfPage\":{\"@id\":\"https://www.rexdalemobilewash.ca/author/admin/#webpage\"}}]}";
+---
+
+<SiteBase
+  slug="author-admin"
+  chrome="none"
+  bodyClass={"archive author author-admin author-1 wp-custom-logo e-lazyload elementor-default elementor-kit-381"}
+  title={"admin, Author at Rexdale Mobile Wash Inc."}
+  canonical={"https://www.rexdalemobilewash.ca/author/admin/"}
+  robots={"index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"}
+  og={[["og:type", "object"], ["og:site_name", "Rexdale Mobile Wash Inc."], ["og:title", "admin, Author at Rexdale Mobile Wash Inc."], ["og:url", "https://www.rexdalemobilewash.ca/author/admin?author_name=admin"], ["og:description", "We Make You Shine!"], ["og:locale", "en_US"], ["og:type", "profile"], ["og:title", "admin, Author at Rexdale Mobile Wash Inc."], ["og:url", "https://www.rexdalemobilewash.ca/author/admin/"], ["og:site_name", "Rexdale Mobile Wash Inc."], ["og:image", "https://secure.gravatar.com/avatar/d285d684812986da8acc11121010be18?s=500&d=mm&r=g"]]}
+  named={[["twitter:card", "summary_large_image"], ["twitter:site", "@RexMobileWash"], ["msapplication-TileImage", "https://www.rexdalemobilewash.ca/images/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp"]]}
+  lang={"en"}
+  viewport={"width=device-width, initial-scale=1"}
+  profile={"https://gmpg.org/xfn/11"}
+  dataLayer={"{\"pagePostType\":\"post\",\"pagePostType2\":\"author-post\",\"pagePostAuthor\":\"admin\"}"}
+  jsonld={jsonld}
+  needsNicepage={false}
+  vendor={["/css/vendor/plugins-contact-form-7-includes-css-styles.css", "/css/vendor/themes-hello-elementor-style.min.css", "/css/vendor/themes-hello-elementor-theme.min.css", "/css/vendor/plugins-elementor-assets-css-frontend-lite.min.css", "/css/vendor/uploads-elementor-css-post-381.css", "/css/vendor/plugins-elementor-assets-css-modules-lazyload-frontend.min.css", "/css/vendor/plugins-elementor-pro-assets-css-frontend-lite.min.css"]}
+  fonts={["https://fonts.googleapis.com/css?family=Roboto%3A100%2C100italic%2C200%2C200italic%2C300%2C300italic%2C400%2C400italic%2C500%2C500italic%2C600%2C600italic%2C700%2C700italic%2C800%2C800italic%2C900%2C900italic%7CRoboto+Slab%3A100%2C100italic%2C200%2C200italic%2C300%2C300italic%2C400%2C400italic%2C500%2C500italic%2C600%2C600italic%2C700%2C700italic%2C800%2C800italic%2C900%2C900italic&display=swap&ver=6.4.7"]}
+>
+  <Fragment set:html={content} />
+</SiteBase>

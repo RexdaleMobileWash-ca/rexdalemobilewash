@@ -25,6 +25,7 @@ const PAGES = [
   'parking-underground:/parking-underground/', 'storefronts-3:/storefronts-3/',
   'water-tanker-service:/water-tanker-service/', 'about-us:/about-us/', 'contact-us:/contact-us/',
   'residential:/residential/', 'lookbook:/lookbook/', 'blog-post-title:/blog-post-title/',
+  'author-admin:/author/admin/',
 ].map((s) => s.split(':'));
 
 const PROBES = [

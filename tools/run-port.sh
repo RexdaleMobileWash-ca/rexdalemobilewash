@@ -19,8 +19,12 @@ if [ ! -d "$WORK/pages" ]; then
   echo "==> extracting captured live site"
   tar xzf tools/capture/live-capture-*.tar.gz -C "$WORK"
 fi
+# Pages captured after that tarball was sealed. Kept loose rather than repacked
+# so the dated archive stays exactly what was fetched on 2026-09-03.
+cp -f tools/capture/pages-extra/*.html "$WORK/pages/" 2>/dev/null || true
 cp -f tools/capture/css_map.json tools/capture/header_model.json \
-      tools/capture/media_final.json tools/capture/header.neutral.html "$WORK/"
+      tools/capture/media_final.json tools/capture/header.neutral.html \
+      tools/capture/instagram-tiles.html "$WORK/"
 cp -f tools/header_apply.py "$WORK/" 2>/dev/null || true
 
 echo "==> generating pages, per-page CSS and shared partials"
@@ -29,5 +33,9 @@ echo "==> generating .astro routes"
 python3 tools/gen_pages.py
 echo "==> generating 404"
 python3 tools/gen_404.py
+echo "==> carrying over the XML sitemaps"
+python3 tools/gen_sitemaps.py
+echo "==> generating edge redirects"
+python3 tools/gen_redirects.py
 echo
 echo "done. Now: npm run build"

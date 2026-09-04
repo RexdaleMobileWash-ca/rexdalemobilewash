@@ -8,9 +8,11 @@ S=WORK
 REPO=REPO_ROOT
 meta=json.load(open(S+'/pages_meta.json'))
 def js(v): return json.dumps(v, ensure_ascii=False)
+
 for slug,d in sorted(meta.items()):
     if slug.startswith('_'): continue   # not a route
-    route='index' if slug=='home' else slug
+    route=d['route']                    # build_site.py owns the slug -> route map
+    up='../'*(route.count('/')+1)       # src/pages/a/b.astro -> ../../layouts
     m=d['meta']
     chrome='nicepage' if d['kind']=='nicepage' else 'none'
     jsonld=m.get('jsonld')
@@ -18,8 +20,8 @@ for slug,d in sorted(meta.items()):
       "// Ported from the live page. The markup in ../html/%s.content.html is the" % slug,
       "// live site's own HTML, with asset URLs pointed at this repo; it is injected" ,
       "// with set:html so nothing is re-typed or reformatted.",
-      "import SiteBase from '../layouts/SiteBase.astro';",
-      "import content from '../html/%s.content.html?raw';" % slug,
+      "import SiteBase from '%slayouts/SiteBase.astro';" % up,
+      "import content from '%shtml/%s.content.html?raw';" % (up, slug),
       '',
       'export const prerender = true;',
       '']
@@ -34,7 +36,11 @@ for slug,d in sorted(meta.items()):
     if m.get('canonical'):   props.append(f'  canonical={{{js(m["canonical"])}}}')
     if m.get('robots'):      props.append(f'  robots={{{js(m["robots"])}}}')
     if m.get('og'):          props.append(f'  og={{{js([list(x) for x in m["og"]])}}}')
-    if m.get('twitter'):     props.append(f'  twitter={{{js([list(x) for x in m["twitter"]])}}}')
+    if m.get('named'):       props.append(f'  named={{{js([list(x) for x in m["named"]])}}}')
+    if m.get('lang'):        props.append(f'  lang={{{js(m["lang"])}}}')
+    if m.get('viewport'):    props.append(f'  viewport={{{js(m["viewport"])}}}')
+    if m.get('profile'):     props.append(f'  profile={{{js(m["profile"])}}}')
+    if m.get('dataLayer'):   props.append(f'  dataLayer={{{js(m["dataLayer"])}}}')
     if jsonld:               props.append('  jsonld={jsonld}')
     if not d.get('needsNicepage', True): props.append('  needsNicepage={false}')
     props.append(f'  vendor={{{js(d["vendor"])}}}')
@@ -44,5 +50,7 @@ for slug,d in sorted(meta.items()):
     lines.append('>')
     lines.append('  <Fragment set:html={content} />')
     lines.append('</SiteBase>')
-    open(os.path.join(REPO,'src/pages',route+'.astro'),'w',encoding='utf-8').write('\n'.join(lines)+'\n')
+    dest=os.path.join(REPO,'src/pages',route+'.astro')
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    open(dest,'w',encoding='utf-8').write('\n'.join(lines)+'\n')
     print(f"  src/pages/{route}.astro   ({d['kind']}, {len(d['vendor'])} sheets)")

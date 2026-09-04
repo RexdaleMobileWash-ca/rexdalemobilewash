@@ -140,11 +140,28 @@ def inject_full_feed(text):
     if 'sbi_images' not in text or not os.path.exists(tiles_file):
         return text
     tiles = open(tiles_file, encoding='utf-8').read().strip()
-    m = re.search(r'(<div id="sbi_images"[^>]*>)(.*?)(</div>\s*</div>\s*<div id="sbi_load")',
-                  text, re.S)
+    m = re.search(r'<div id="sbi_images"[^>]*>', text)
     if not m:
         return text
-    return text[:m.start(2)] + '\n' + tiles + '\n\t' + text[m.end(2):]
+    # Find the grid's OWN closing </div> by counting tags. A non-greedy regex
+    # anchored on what follows the grid cannot do this: the markup there is
+    #   </div>(photo_wrap) </div>(last tile) </div>(#sbi_images) <div id="sbi_load">
+    # and the earliest match of `</div>\s*</div>\s*<div id="sbi_load"` starts one
+    # tag late, so the last tile's closing </div> survives the replacement. The
+    # spliced tiles are already balanced, so that leftover tag closes #sbi_images
+    # at the tile boundary and #sb_instagram at the grid's — which reparents
+    # #sbi_load (Load More + Follow button) out of the feed, where none of the
+    # plugin's `#sb_instagram ...` rules reach it and its inline SVG icon renders
+    # at ~1380px. Same trap as split_tiles() in harvest-instagram.py.
+    depth, end = 0, None
+    for tag in re.finditer(r'<div\b|</div>', text[m.start():]):
+        depth += -1 if tag.group(0).startswith('</') else 1
+        if depth == 0:
+            end = m.start() + tag.start()
+            break
+    if end is None:
+        return text
+    return text[:m.end()] + '\n' + tiles + '\n\t' + text[end:]
 
 def rewrite(text):
     """Point every old-server reference at this site's own assets."""
@@ -327,26 +344,66 @@ def css_plan(doc):
     return items
 
 def head_meta(doc):
+    """Pull the head metadata out of a captured page.
+
+    Values are html.unescape()d on the way out. SiteBase.astro renders them as
+    JSX attributes, which escape on output, so a value carried across still
+    entity-encoded is encoded a second time: WordPress's "we&#039;ll" ships as
+    "we&amp;#039;ll" and the entity shows up verbatim in the search snippet and
+    the social card.
+    """
     g = lambda p, d='': (re.search(p, doc, re.S).group(1).strip() if re.search(p, doc, re.S) else d)
+    U = html.unescape
     meta = {
-        'title':       html.unescape(g(r'<title>(.*?)</title>')),
-        'description': g(r'<meta name="description" content="([^"]*)"'),
-        'canonical':   g(r'<link rel="canonical" href="([^"]*)"'),
-        'robots':      g(r"<meta name='robots' content='([^']*)'"),
-        'og':          [], 'twitter': [], 'jsonld': None,
+        'title':       U(g(r'<title>(.*?)</title>')),
+        'description': U(g(r'<meta name="description" content="([^"]*)"')),
+        'canonical':   U(g(r'<link rel="canonical" href="([^"]*)"')),
+        'robots':      U(g(r"<meta name='robots' content='([^']*)'")),
+        'og':          [], 'named': [], 'jsonld': None,
+        # Not constants: the two page families differ. Nicepage pages declare
+        # initial-scale=1.0, the hello-elementor pages initial-scale=1, and only
+        # the theme pages carry the XFN profile link. `lang` is "en" everywhere —
+        # the layout used to hardcode "en-US".
+        'lang':        g(r'<html[^>]*\slang="([^"]*)"', 'en'),
+        'viewport':    g(r'<meta name="viewport" content="([^"]*)"',
+                         'width=device-width, initial-scale=1.0'),
+        'profile':     g(r'<link rel="profile" href="([^"]*)"') or None,
+        # gtm4wp pushes page classification into dataLayer BEFORE the GTM
+        # loader runs. Tags and triggers in the client's container can read
+        # pagePostType / pagePostType2 / pagePostAuthor; without this push they
+        # are simply undefined and those tags stop firing. Invisible on the
+        # page, which is why a render comparison cannot see it.
+        'dataLayer':   g(r'var\s+dataLayer_content\s*=\s*(\{.*?\});') or None,
     }
-    for m in re.finditer(r'<meta property="(og:[^"]+)" content="([^"]*)" />', doc):
-        meta['og'].append((m.group(1), m.group(2)))
-    for m in re.finditer(r'<meta name="(twitter:[^"]+)" content="([^"]*)" />', doc):
-        meta['twitter'].append((m.group(1), m.group(2)))
+    # Two plugins write this head with two different self-closing spellings —
+    # Nicepage emits `"/>`, Yoast ` />` — and Yoast's article:* properties are
+    # Open Graph too. Matching `property=` with an optional space therefore keeps
+    # three tags per Nicepage page (og:title, og:url, og:description) and two per
+    # Yoast page (article:publisher, article:modified_time) that an `og:` +
+    # ` />`-only pattern silently dropped. Document order is preserved because
+    # it is meaningful: where both plugins set og:title, a scraper takes the
+    # first one it sees.
+    for m in re.finditer(r'<meta property="([^"]+)" content="([^"]*)"\s*/?>', doc):
+        meta['og'].append((m.group(1), U(m.group(2))))
+    # name=-addressed metadata other than title/description/robots
+    for m in re.finditer(r'<meta name="((?:twitter:|msapplication-)[^"]+)" content="([^"]*)"\s*/?>', doc):
+        meta['named'].append((m.group(1), U(m.group(2))))
     m = re.search(r'<script type="application/ld\+json" class="yoast-schema-graph">(.*?)</script>', doc, re.S)
     if m: meta['jsonld'] = m.group(1).strip()
     # head metadata keeps the production domain; only asset paths inside it move
     meta['jsonld'] = rewrite_absolute(meta['jsonld']) if meta['jsonld'] else None
     meta['og'] = [(k, rewrite_absolute(v)) for k, v in meta['og']]
+    meta['named'] = [(k, rewrite_absolute(v)) for k, v in meta['named']]
     return meta
 
-SLUG_TO_ROUTE = {'home': 'index'}
+# A capture file is one flat name per page; the route it serves at can be nested.
+# Anything not listed here is served at /<slug>/ from src/pages/<slug>.astro.
+SLUG_TO_ROUTE = {'home': 'index', 'author-admin': 'author/admin'}
+
+def route_of(slug):
+    """(astro file stem, url path) for a slug."""
+    r = SLUG_TO_ROUTE.get(slug, slug)
+    return r, '/' if r == 'index' else '/' + r + '/'
 
 def main():
     pages = {}
@@ -403,9 +460,11 @@ def main():
         vendor, dropped = prune_sheets(vendor, dom)
         needs_nicepage = bool(re.search(NICEPAGE_MARKUP, dom))
 
+        astro_route, url = route_of(slug)
         pages[slug] = dict(kind=kind, meta=meta, vendor=vendor, fonts=fonts,
                            bodyClass=bcls.group(1) if bcls else '',
-                           needsNicepage=needs_nicepage)
+                           needsNicepage=needs_nicepage,
+                           route=astro_route, url=url)
 
         open(P('src/html', f'{slug}.content.html'), 'w', encoding='utf-8').write(content)
         if footer: open(P('src/html', f'{slug}.footer.html'), 'w', encoding='utf-8').write(footer)

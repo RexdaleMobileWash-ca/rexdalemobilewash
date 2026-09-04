@@ -11,6 +11,13 @@ its output is committed.
 
 Writes $PORT_WORK/instagram-tiles.html — every tile in feed order, ready for
 build_site.py to splice into the captured markup and localise.
+
+The committed copy lives at tools/capture/instagram-tiles.html, next to the page
+capture, and run-port.sh copies it into $PORT_WORK. That file is the input the
+port is actually built from — it is NOT this script's raw output but the same
+tiles after their photos were localised to /images/instagram/, so re-running the
+pipeline neither needs the AJAX endpoint nor re-downloads from a signed CDN URL.
+Overwrite it from here only while the WordPress site is still up.
 """
 import os as _os
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
