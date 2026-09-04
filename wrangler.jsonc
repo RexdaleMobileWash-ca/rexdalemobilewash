@@ -17,6 +17,25 @@
   // always rebuild before deploying, or the deploy uses the previous build's
   // copy. Workers Builds has also overridden these once on its own. Check with:
   //   GET /accounts/{id}/workers/scripts/rexdalemobilewash/subdomain
+  // The review hostname on the client's own zone. Declared here rather than
+  // attached by hand so it survives every future `wrangler deploy` and is
+  // visible in the repo; Cloudflare creates and owns the proxied DNS record for
+  // it, so there is no separate record to keep in sync.
+  //
+  // This is NOT the cutover. The apex and www still point at the WordPress
+  // server and the client's Microsoft 365 mail records are untouched — a
+  // subdomain route cannot affect either. Pointing the real domain here is
+  // gate 13 (wp-17-point-domain-at-new-site).
+  //
+  // staging.rexdalemobilewash.ca serves a complete copy of the client's site on
+  // their own brand domain, so it carries `X-Robots-Tag: noindex, nofollow` from
+  // a Cloudflare Response Header Transform Rule scoped to that hostname. The
+  // rule is deliberately NOT in public/_headers: that file applies to every
+  // hostname the Worker answers on, so it would follow the site onto the
+  // production domain at gate 13 and deindex the client.
+  "routes": [
+    { "pattern": "staging.rexdalemobilewash.ca", "custom_domain": true }
+  ],
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "404-page",

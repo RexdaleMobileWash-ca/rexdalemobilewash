@@ -66,8 +66,10 @@ Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
 worker .......................... rexdalemobilewash
 repo ............................ RexdaleMobileWash-ca/rexdalemobilewash @ main
 build ........................... npm run build   deploy: npx wrangler deploy
-review hostname ................. rexdalemobilewash.ash-47a.workers.dev
+review hostname ................. staging.rexdalemobilewash.ca  (noindex)
+                                  rexdalemobilewash.ash-47a.workers.dev
 cutover hostname ................ not attached — that is gate 13
+zone ............................ rexdalemobilewash.ca, ACTIVE on Cloudflare
 workers.dev ..................... enabled (public, not access-gated)
 preview URLs .................... disabled
 ```
@@ -94,18 +96,44 @@ read by the Workers asset runtime. `npx wrangler dev` against `dist/client`
 serves the real thing (it logs `Parsed N valid redirect rules` / `header rules`
 on startup) and is the way to check them without deploying.
 
-### The review URL is public
+### The review hostname: staging.rexdalemobilewash.ca
 
-`rexdalemobilewash.ash-47a.workers.dev` is an unlisted but ungated copy of the
-client's site. Nothing links to it and the real domain is untouched, so the
-practical risk is low — but it is not private. Two ways to close it when it
-matters: put a Cloudflare Access policy in front (needs Zero Trust onboarding on
-this account — there is currently no team domain and no identity provider), or
-attach a real hostname on an active zone and disable workers.dev.
+**The zone is `active`, not pending.** An earlier version of this file said
+`*.rexdalemobilewash.ca` could not be used because the zone was pending with
+nameservers at GoDaddy. It is not: `rexdalemobilewash.ca` is authoritative on
+Cloudflare (`dee`/`josh.ns.cloudflare.com`), so gate 6 is done — which also
+unblocks gate 7's `img.` hostname.
 
-`*.rexdalemobilewash.ca` cannot be used yet: the zone is on this account but
-**pending**, nameservers still at GoDaddy (`ns41/ns42.domaincontrol.com`).
-Moving them is gate 6, which also moves the client's MX/SPF records.
+`staging.rexdalemobilewash.ca` is attached to the Worker as a Custom Domain,
+declared in `wrangler.jsonc` under `routes` so it survives every future
+`wrangler deploy` rather than being attached by hand. Cloudflare creates and
+owns the proxied DNS record (an `AAAA` to `100::`, its standard placeholder for
+a proxied Worker route), so there is no separate record to keep in sync.
+
+Attaching it added **exactly one** record to a zone that carries the client's
+live Microsoft 365 mail. The 32 records that were there before — `MX` to
+`rexdalemobilewash-ca.mail.protection.outlook.com`, SPF, the Microsoft
+verification TXT, `autodiscover`, `lyncdiscover`, `sip`, the SRV pair — are
+byte-identical afterwards. A subdomain route cannot affect them, and the apex
+and `www` still point at the WordPress server. **This is not the cutover**;
+pointing the real domain here is gate 13.
+
+**It is `noindex`.** It serves a complete copy of the client's site on their own
+brand domain, so a Cloudflare Response Header Transform Rule scoped to
+`http.host eq "staging.rexdalemobilewash.ca"` sets
+`X-Robots-Tag: noindex, nofollow`. The scoping is the point: the same header in
+`public/_headers` would apply to every hostname the Worker answers on and would
+follow the site onto the production domain at gate 13, deindexing the client.
+Remove it by deleting the rule in that zone's
+`http_response_headers_transform` entrypoint ruleset — nothing in the repo
+depends on it.
+
+`rexdalemobilewash.ash-47a.workers.dev` still answers as well: an unlisted but
+ungated copy, and unlike the staging hostname it carries no `noindex`. Close it
+by setting `"workers_dev": false` in `wrangler.jsonc` and rebuilding, now that a
+real hostname exists — or put Cloudflare Access in front of both (needs Zero
+Trust onboarding on this account; there is no team domain or identity provider
+yet).
 
 ### Two things that will bite
 
@@ -219,9 +247,10 @@ Nothing else has to change.
 ### Still to do
 - **Gate 7** — `img.rexdalemobilewash.ca` as a *proxied* Cloudflare CNAME onto
   `f005.backblazeb2.com`, plus the transform rule that scopes the hostname to
-  this one bucket. **Blocked**: the zone is still pending, nameservers at GoDaddy.
-  Without the transform rule the hostname exposes every public bucket on that
-  shared origin, so the rule is not optional.
+  this one bucket. **No longer blocked**: the zone went active, which was the
+  stated blocker. Attaching `staging.` proved the mechanism — one proxied record
+  on this zone, nothing else touched. Without the transform rule the hostname
+  exposes every public bucket on that shared origin, so the rule is not optional.
 - Then `PUBLIC_IMG_BASE=https://img.rexdalemobilewash.ca` as a Workers Builds
   **build** variable (not a runtime secret — every page is prerendered, so a
   runtime secret is not read during the build and the URLs come out empty), and
