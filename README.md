@@ -164,8 +164,9 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
 
 ## Images
 
-Site images currently ship from `public/images/` in this repo. The stack serves
-them from Backblaze B2 through `img.[domain]` (AD-9) — gates 4 to 7.
+The pages still ship images from `public/images/` in this repo. Gates 4 to 7 are
+done, so the same files are also live at `https://img.rexdalemobilewash.ca/`
+(AD-9); the pages get pointed at it in the swap described under **Still to do**.
 
 ### Gate 4 — the bucket (done)
 
@@ -244,14 +245,66 @@ under `public/images/`, so `/images/2020/12/foo.jpg` becomes
 `/images/instagram/x.jpg` becomes `https://img.rexdalemobilewash.ca/instagram/x.jpg`.
 Nothing else has to change.
 
+### Gate 7 — the image address is live (done)
+
+`https://img.rexdalemobilewash.ca/<bucket key>` now serves the bucket, through
+Cloudflare. This is the second proxied record added to the client's live zone,
+after `staging.` above; the 34 records that were there before are untouched.
+
+Two records, both mandatory:
+
+```
+CNAME  img -> f005.backblazeb2.com          PROXIED   (native origin, not the S3 endpoint)
+Transform rule, http_request_transform phase:
+  when  http.host eq "img.rexdalemobilewash.ca"
+  path  concat("/file/rexdalemobilewash-img", http.request.uri.path)
+```
+
+Proof:
+
+```
+img.rexdalemobilewash.ca resolves to  104.21.90.186 / 172.67.203.212   (Cloudflare anycast)
+f005.backblazeb2.com     resolves to  149.137.136.16                   (B2 direct — not what we hit)
+
+GET /2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp
+  status .............. 200
+  content-type ........ image/webp
+  content-length ...... 7926          identical to the staged file
+  cf-cache-status ..... MISS, then HIT on the second request
+  x-bz-file-id ........ 4_z6fdfd8ab8f996b8fac030819_...   the gate 4 bucketId
+
+6 random files (3 Instagram, 3 media library) fetched through img.: all 200,
+all byte-identical to staging by sha256.
+```
+
+Out-of-bucket paths, which is the security half of the gate:
+
+```
+/../../file/backblaze-b2-public/x.txt          400   rejected at the Cloudflare edge
+/%2e%2e/%2e%2e/file/backblaze-b2-public/x.txt  400   rejected at the Cloudflare edge
+/file/backblaze-b2-public/x.txt                404   B2: "File with such name does not exist."
+/b2api/v2/b2_list_buckets                      404   B2: "File with such name does not exist."
+/2023/12/does-not-exist.webp                   404
+```
+
+The last two 404s are the ones that matter. B2 answered its own API path with
+*file not found* — meaning the transform rule had already prefixed it to
+`/file/rexdalemobilewash-img/b2api/v2/b2_list_buckets`, so nothing on that host
+can address anything outside this bucket. Without the rule, `img.` would map to
+the whole shared B2 origin and anyone could pull another Backblaze customer's
+public bucket through the client's domain.
+
+`cf-cache-status` being present at all is the other load-bearing line: it proves
+the request went *through* Cloudflare rather than direct to Backblaze, which is
+what makes egress free.
+
+**Flagged, not changed (AD-2):** the zone's SSL/TLS mode is **Full**, not Full
+(strict). B2 presents a valid certificate, so Full (strict) would work and is
+stronger — but that setting is zone-wide and affects the client's other
+hostnames, so it is the client's call, not this migration's.
+
 ### Still to do
-- **Gate 7** — `img.rexdalemobilewash.ca` as a *proxied* Cloudflare CNAME onto
-  `f005.backblazeb2.com`, plus the transform rule that scopes the hostname to
-  this one bucket. **No longer blocked**: the zone went active, which was the
-  stated blocker. Attaching `staging.` proved the mechanism — one proxied record
-  on this zone, nothing else touched. Without the transform rule the hostname
-  exposes every public bucket on that shared origin, so the rule is not optional.
-- Then `PUBLIC_IMG_BASE=https://img.rexdalemobilewash.ca` as a Workers Builds
+- `PUBLIC_IMG_BASE=https://img.rexdalemobilewash.ca` as a Workers Builds
   **build** variable (not a runtime secret — every page is prerendered, so a
   runtime secret is not read during the build and the URLs come out empty), and
   the image paths swapped over.
