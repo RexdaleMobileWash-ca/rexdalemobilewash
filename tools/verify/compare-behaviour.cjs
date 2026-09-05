@@ -6,6 +6,7 @@ const REPO_ROOT = process.env.PORT_REPO || _path.join(__dirname, '..', '..');
 // silently lose something (the submenu is the only route to 9 pages).
 const { chromium } = require('playwright');
 const fs = require('fs');
+const { routeImages } = require('./img-route.cjs');
 const S = WORK;
 const FONTS = JSON.parse(fs.readFileSync(S + '/fontcache/index.json', 'utf8'));
 const BY = JSON.parse(fs.readFileSync(S + '/fontcache/byfamily.json', 'utf8'));
@@ -21,6 +22,9 @@ async function setup(ctx) {
   for (const g of ['**://www.googletagmanager.com/**', '**://www.google.com/**',
                    '**://www.gstatic.com/**', '**://fonts.gstatic.com/**', '**://scontent*/**'])
     await ctx.route(g, (r) => r.abort());
+  // img.[domain] is unreachable from Chromium here; serve the same bytes
+  // from the bucket's staging directory. See tools/verify/img-route.cjs.
+  await routeImages(ctx);
 }
 
 const vis = (page, sel) => page.evaluate((s) => {

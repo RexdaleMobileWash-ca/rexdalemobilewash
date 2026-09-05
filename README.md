@@ -14,7 +14,7 @@ it is listed under [Deliberate differences](#deliberate-differences) below.
 |---|---|
 | Pages | 18 routes + a ported 404 |
 | Source design | Nicepage 8.6.2 (15 pages) and the hello-elementor theme (3 pages + 404) |
-| Images | 110 files, all local under `public/images/` |
+| Images | none in the repo — every one comes from `img.rexdalemobilewash.ca` (AD-9) |
 | CSS | the live site's own sheets, vendored, in the live load order, pruned per page |
 | JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel, lightbox and parallax need them) |
 | Analytics | the same GTM container, `GTM-NMTLRJ63`, with gtm4wp's `dataLayer` push |
@@ -303,11 +303,55 @@ what makes egress free.
 stronger — but that setting is zone-wide and affects the client's other
 hostnames, so it is the client's call, not this migration's.
 
-### Still to do
-- `PUBLIC_IMG_BASE=https://img.rexdalemobilewash.ca` as a Workers Builds
-  **build** variable (not a runtime secret — every page is prerendered, so a
-  runtime secret is not read during the build and the URLs come out empty), and
-  the image paths swapped over.
+### The pages now point at it (done)
+
+`public/images/` is gone — 268 files, 84MB — and every image address on the site
+is `https://img.rexdalemobilewash.ca/…`. The Worker serves no images at all.
+
+**One host, in one file.** `image-hosts.json` at the repo root is the only place
+the hostname is written. `tools/build_site.py`, `tools/gen_sitemaps.py`,
+`tools/gen_edge.py`, `src/layouts/SiteBase.astro`, `tools/verify/compare-head.py`
+and the AD-9 checker all read it, so the generator and the checker cannot
+disagree about what "the image host" means.
+
+**Not the `PUBLIC_IMG_BASE` build variable this file used to plan for.**
+`public/css/page-*.css` is copied into `dist` verbatim — Astro never parses it —
+so a `${PUBLIC_IMG_BASE}` placeholder inside a hero's `background-image: url()`
+would ship to the browser literally. Two of this site's section backgrounds are
+exactly that. One host in one JSON file does the same job with nothing to
+resolve at build time and nothing to go missing in Workers Builds.
+
+Where the addresses had to change, and what each one would have broken:
+
+```
+page markup, 1125 refs   <img src>, srcset, inline background-image
+per-page CSS, 2 refs     hero backgrounds in public/css/page-residential.css
+og:image                 copied into Facebook/LinkedIn/Slack unfurl caches — it
+                         keeps resolving to whatever it said long after gate 16
+JSON-LD image/logo/      Yoast's organisation + article schema
+  contentUrl
+sitemap <image:image>    41 refs — the addresses Google has indexed for image
+                         search; left behind they 404 at gate 16
+rel=icon, apple-touch-   the favicon is the client's logo, a media-library file
+  icon, TileImage
+/favicon.ico redirect    WordPress answers it with a 302 to the Site Icon; there
+                         is no local path left to redirect to, so it is absolute
+```
+
+**`public/_headers` lost its `/images/*` rule.** The Worker serves no images, so
+the rule could never match. `img.` sets its own (`cache-control: max-age=14400`,
+plus `cf-cache-status`); the live site sent `max-age=86400`, so images
+revalidate 6× more often than they did. Not a correctness problem, and a
+Cloudflare Cache Rule on that hostname would close it if it ever matters.
+
+**The one image on the site that was not the client's.** The AD-9 check caught an
+`og:image` on `/author/admin/` pointing at `secure.gravatar.com`. Both easy exits
+were wrong: allowlisting the host is a hotlink with permission, and mirroring the
+file into the bucket copies in a grey silhouette — the admin email has no
+Gravatar, so `d=mm` was serving the generic mystery-person placeholder. That page
+now carries the site logo, which Yoast already names as the organisation's logo
+in the JSON-LD on the same page. Listed under
+[Deliberate differences](#deliberate-differences).
 
 **The site must never reference `*.backblazeb2.com`.** That path bypasses
 Cloudflare and bills the client for every image view.
@@ -330,7 +374,14 @@ src/html/<slug>.content.html                   each page's markup, injected with
 public/css/page-<slug>.css                     each page's own inline CSS, hoisted out
 public/css/vendor/                             the live site's stylesheets, verbatim
 public/_headers, public/_redirects             edge config, both generated
+image-hosts.json                               the image host, written once and read by
+                                               the generator, the layout, the AD-9
+                                               checker and two verify tools
+bin/check-images.mjs                           AD-9 enforcement, inside `npm run build`
 ```
+
+There is no `public/images/`. Every image is served from the bucket at
+`img.rexdalemobilewash.ca` (AD-9) — see [Images](#images).
 
 **The capture is the source of truth.** The live WordPress site is switched off at
 gate 16, after which it cannot be re-fetched — so the capture is committed, not
@@ -379,7 +430,8 @@ is itself the dropdown parent.
 ## Verification
 
 ```bash
-npm run build
+npm run build                 # runs the AD-9 image check; a violation fails the build
+npm run verify:image-urls     # every image address in dist/, fetched from img.
 npm run verify:no-old-host    # nothing in dist/ points at the WordPress server
 npm run verify:header         # header transform, byte-exact
 npm run verify                # full render + pixel + behaviour parity, vs the capture
@@ -388,9 +440,71 @@ npm run verify:head           # every <head>, vs the LIVE site
 npm run verify:live           # every page rendered side by side, vs the LIVE site
 ```
 
-The first four compare the port against the **capture**. The last two compare it
+The middle four compare the port against the **capture**. The last two compare it
 against the **live site**, and they exist because those are two different
 questions — see [Against the live site](#against-the-live-site).
+
+### Images (AD-9)
+
+Two checks, because they answer different questions and neither implies the other.
+
+`node bin/check-images.mjs` runs inside `npm run build`, joined with `&&` — so it
+runs in Workers Builds on every deploy, and a violation fails the deploy instead
+of reaching the client. It is a string check over `dist/`: is every image address
+on the canonical host.
+
+```
+files scanned ...................... 66
+image references ................... 642
+on img.rexdalemobilewash.ca ........ 639
+on an allowed third party .......... 0
+off-host ........................... 0
+local, not in the bucket ........... 3
+files mentioning new.rexdalemobilewash.ca  0
+```
+
+The three local ones are the Smash Balloon plugin's UI sprite
+(`/css/assets/plugins-instagram-feed-img-sbi-sprite.png`, 119×55, 3.9KB),
+referenced three times by its own vendored stylesheet. Plugin chrome, not a
+content photograph, so it stays in `public/` — the count is explained, not
+ignored.
+
+> **The shipped checker was blind to 50 of those 642 references** and this build
+> passed at 592. An inline style attribute carries its own quotes as entities —
+> `style="background-image: url(&quot;https://…/hero.jpg&quot;)"` — and
+> undecoded, that URL starts with `&quot;` so it is not absolute, and ends with
+> `&quot;` so the image-extension test fails. It was counted as neither off-host
+> nor local: it vanished. 29 of this site's hero and section backgrounds are
+> written that way, which is precisely the case the check exists to catch.
+> `bin/check-images.mjs` now decodes entities before classifying, verified by
+> planting an off-host hotlink in that exact spelling — the check exits 1 and
+> names it, and exits 0 once restored. **Worth pushing back into the
+> `keep-images-on-backblaze` skill.**
+
+`npm run verify:image-urls` (`tools/verify/image-urls-live.py`) answers the other
+half. The host being right does not mean the file is there: a typo'd path, a file
+gate 5 missed, or a transform rule scoped to the wrong bucket all pass the string
+check cleanly and 404 for every visitor. So this one opens sockets.
+
+```
+distinct addresses in dist ......... 268
+served as an image ................. 268
+not served, or not an image ........ 0
+status codes ....................... {'206': 268}
+```
+
+268 is exactly the file count `public/images/` used to hold, so nothing was lost
+in the swap.
+
+**Chromium cannot reach `img.` through this session's proxy** (curl can; this is
+the same limitation that already forces the Google Fonts cache). Left alone every
+photo would fail to load in the render comparison and every measurement that
+depends on an image's intrinsic size would be taken against a 0×0 box. So
+`tools/verify/img-route.cjs` intercepts that hostname in Chromium and serves the
+same bytes from `.port-work/b2-staging` — which is what gate 5 uploaded and what
+`tools/reconcile-images.py` proves byte-identical to the bucket. That is the
+split: the render harness proves the **page** is right, `verify:image-urls`
+proves the **host** serves it.
 
 ### Against the capture
 
@@ -461,9 +575,11 @@ it was serving an older build than the repo.
 Measured against the **deployed** Worker, not a local build:
 
 ```
-head parity ........... 18/18   tag for tag, once the deliberate
-                                /wp-content/uploads/ -> /images/ rewrite and
-                                entity/quote spelling are normalised
+head parity ........... 17/18   tag for tag, once the deliberate move of the
+                                media library to img. and entity/quote spelling
+                                are normalised. The one difference is
+                                /author/admin/'s og:image — deliberate
+                                difference 12.
 render vs live ........ 17/19   exact document height on all 19 (the 18 routes
                                 plus the 404). The two flagged are / and
                                 /what-we-do/, on the deliberate differences
@@ -499,7 +615,7 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Eleven, all forced, all verified:
+Twelve, all forced, all verified:
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -510,9 +626,9 @@ Eleven, all forced, all verified:
 
 2. **The Instagram feed is a frozen local snapshot.** Smash Balloon renders
    placeholders and swaps in photos at runtime from signed `cdninstagram.com` URLs
-   that expire, via a WordPress AJAX endpoint that will not exist. The 41 images
-   were downloaded and the markup points at them directly, so the grid renders
-   with no JS and never expires — but **it will not show new posts**. A live feed
+   that expire, via a WordPress AJAX endpoint that will not exist. Those photos
+   are in the bucket and the markup points at `img.` directly, so the grid
+   renders with no JS and never expires — but **it will not show new posts**. A live feed
    needs a decision (gate 12 territory).
 
 3. **`elementor/css/global.css` is omitted** — it returns **404 on the live site**,
@@ -541,8 +657,9 @@ Eleven, all forced, all verified:
    > **WordPress install is very likely compromised**, which is worth acting on
    > independently of this migration: the same access that planted this could
    > have planted more, and the media library this port copied from came out of
-   > the same install. Nothing in `public/images/` executes, so the port is not a
-   > carrier — but the WordPress host, its database, and its credentials should
+   > the same install. Nothing in the bucket executes — it holds only media
+   > files, all EXIF-stripped and pixel-verified at gate 5 — so the port is not
+   > a carrier. But the WordPress host, its database, and its credentials should
    > be treated as untrusted rather than simply switched off at gate 16.
 
 5. **The Instagram feed carries all 157 posts, not the 20 the page shipped with.**
@@ -550,8 +667,8 @@ Eleven, all forced, all verified:
    plugin's `sbi_load_more_clicked` AJAX endpoint, which dies with the WordPress
    site — and the image URLs inside it are signed and expire sooner than that.
    `tools/harvest-instagram.py` paged through that endpoint once and pulled every
-   tile; all 157 are inlined, their photos downloaded to
-   `public/images/instagram/`. The page still shows 20 with a working **Load
+   tile; all 157 are inlined, their photos staged and uploaded to the bucket
+   under `instagram/`. The page still shows 20 with a working **Load
    More** that reveals 20 more per click, so the rendered page is identical to
    the original — it just no longer needs a server to page through.
 
@@ -602,25 +719,33 @@ Eleven, all forced, all verified:
    assert a plugin stack that is not running; the prefetch warms a connection
    for a reCAPTCHA the port does not load. None is read by anything.
 
-10. **The absolute URLs in head metadata and JSON-LD resolve only after
-    cutover.** `canonical`, `og:url`, `og:image`, the schema.org `@id`s and the
-    Organization logo keep the production domain on purpose — that is what this
-    site will be — while their asset paths move from `/wp-content/uploads/` to
-    `/images/`. So `https://www.rexdalemobilewash.ca/images/2020/12/logoclear-1.png`
-    is a 404 *today*, because that host is still WordPress, and a 200 the moment
-    gate 13 points the domain here. Every one of those files is present under
-    `public/images/`, checked. The alternative — pointing them at the
-    `workers.dev` hostname — would bake the preview host into the client's
-    structured data.
+10. **The page URLs in head metadata resolve only after cutover; the image URLs
+    resolve now.** `canonical`, `og:url` and the schema.org `@id`s keep the
+    production domain on purpose — that is what this site will be — so they point
+    at WordPress today and at this site the moment gate 13 lands. The alternative,
+    pointing them at the `workers.dev` hostname, would bake the preview host into
+    the client's structured data.
+
+    Their **image** addresses are a different thing and were split off at gate 7:
+    `og:image`, the Organization logo, `contentUrl`, the favicon and the sitemap
+    `<image:image>` entries all go to `img.rexdalemobilewash.ca`, which serves
+    them today and will keep serving them through cutover and past gate 16. That
+    matters most for `og:image`, which Facebook, LinkedIn and Slack copy into
+    their unfurl caches — an address that only works after cutover would have
+    been cached broken in the meantime, with nothing on the site to explain it.
+    All 268 addresses in `dist/` are fetched and checked by
+    `npm run verify:image-urls`.
 
 11. **Four response headers are reproduced from `public/_headers`, not from a
     WAF.** `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection` and
     `Content-Security-Policy: upgrade-insecure-requests` come from Sucuri on the
     live site — a layer that does not exist here — so nothing in the ported
     markup reproduced them and the port shipped with none. The same file
-    restores `max-age=86400` on `/images/`, `/css/` and `/js/`, which Cloudflare
-    static assets otherwise serve as `max-age=0, must-revalidate`, and puts the
-    `charset=UTF-8` back on HTML responses.
+    restores `max-age=86400` on `/css/` and `/js/`, which Cloudflare static
+    assets otherwise serve as `max-age=0, must-revalidate`, and puts the
+    `charset=UTF-8` back on HTML responses. There is no `/images/` rule: the
+    Worker serves no images, so it could never match — `img.` sets its own
+    (`max-age=14400`), where live sent `max-age=86400`.
 
     That last one needs **one rule per route**, which is why `_headers` is
     generated rather than hand-written. `_headers` matches on the *request*
@@ -637,6 +762,17 @@ Eleven, all forced, all verified:
     are unaffected. Closing it properly means a zone-level Transform Rule
     (gate 13 territory) or turning every unknown path into an on-demand Worker
     route, which is a worse trade than the header.
+
+12. **`/author/admin/`'s social card shows the logo, not the author's Gravatar.**
+    Yoast set `og:image` on that page to `secure.gravatar.com`, the one image
+    address on the site that was not the client's — and the AD-9 check refuses
+    it. Both easy exits were wrong: allowlisting the host converts a caught
+    hotlink into a permitted one, and mirroring the file into the bucket copies
+    in a grey silhouette, because the admin email has no Gravatar and `d=mm` was
+    serving the generic mystery-person placeholder. The site logo is already in
+    the bucket and Yoast itself names it as the organisation's logo in the
+    JSON-LD on the same page. This is the single remaining difference in
+    `npm run verify:head`, which is otherwise 17/18 exact against the live site.
 
 ## Known issues carried over from the live site
 

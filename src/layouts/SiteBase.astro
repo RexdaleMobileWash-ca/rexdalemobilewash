@@ -13,6 +13,7 @@
 //                                  no page has any element that uses them
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import imageHosts from '../../image-hosts.json';
 
 interface Props {
   slug: string;
@@ -46,7 +47,9 @@ const {
   dataLayer, bodyAttrs = {},
 } = Astro.props;
 
-const FAVICON = '/images/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp';
+// The favicon is the client's logo, a media-library file, so it is an image like any
+// other and lives at img. under AD-9 — not a UI chrome asset that belongs in public/.
+const FAVICON = `https://${imageHosts.canonical}/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp`;
 const GTM_ID = 'GTM-NMTLRJ63';
 ---
 

@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "AD-9. One source of truth for where images come from, read by bin/check-images.mjs",
+    "and by tools/build_site.py, tools/gen_sitemaps.py and tools/fetch_images.py so the",
+    "generator and the checker can never disagree about the host.",
+
+    "oldHost is new.rexdalemobilewash.ca, not www.rexdalemobilewash.ca. This migration",
+    "keeps the domain and changes the hosting, so www. is the destination, not a hotlink —",
+    "reporting it would flag all 19 pages on every build and mean nothing. new. is the",
+    "WordPress staging host: it has no DNS record at all, so any reference to it is already",
+    "dead. A photo still served from www. is caught anyway, by the off-host rule: www. is",
+    "not the canonical host and is not in allow, so it fails the build."
+  ],
+  "canonical": "img.rexdalemobilewash.ca",
+  "allow": [],
+  "oldHost": "new.rexdalemobilewash.ca"
+}

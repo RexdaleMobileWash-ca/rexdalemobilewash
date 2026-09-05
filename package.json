@@ -5,7 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "astro build && node bin/check-images.mjs",
+    "check:images": "node bin/check-images.mjs",
+    "verify:image-urls": "python3 tools/verify/image-urls-live.py",
     "preview": "astro preview",
     "port": "./tools/run-port.sh",
     "verify": "./tools/verify/run-verify.sh",

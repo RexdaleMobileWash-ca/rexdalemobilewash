@@ -13,8 +13,10 @@ gate 16 they cannot be re-fetched.
 
 Two edits, both forced:
 
-  * `/wp-content/uploads/` -> `/images/` in the image URLs, the same rewrite
-    every ported page gets.
+  * `/wp-content/uploads/` -> `https://img.rexdalemobilewash.ca/` in the
+    <image:image> URLs, the same rewrite every ported page gets. Google has
+    those exact addresses indexed for image search; leaving them on the
+    WordPress host would 404 every one of them at gate 16.
   * the XSL stylesheet reference. Yoast points it at
     /wp-content/plugins/wordpress-seo/css/main-sitemap.xsl, a path the new site
     has no reason to serve. The stylesheet itself is self-contained, so it is
@@ -27,11 +29,12 @@ import os as _os
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 _ROOT = _os.path.dirname(_HERE)
 
-import os, re, glob, shutil
+import os, re, json, glob, shutil
 
 SRC = os.path.join(_HERE, 'capture', 'sitemaps')
 DEST = os.path.join(_ROOT, 'public')
 PROD = 'https://www.rexdalemobilewash.ca'
+IMG_BASE = 'https://' + json.load(open(os.path.join(_ROOT, 'image-hosts.json')))['canonical']
 XSL_LIVE = re.compile(r'href="[^"]*wordpress-seo/css/main-sitemap\.xsl"')
 
 
@@ -50,7 +53,7 @@ def main():
         xml = XSL_LIVE.sub('href="/sitemap.xsl"', xml)
         for host in (PROD, 'http://www.rexdalemobilewash.ca',
                      'https://rexdalemobilewash.ca', 'http://rexdalemobilewash.ca'):
-            xml = xml.replace(host + '/wp-content/uploads/', PROD + '/images/')
+            xml = xml.replace(host + '/wp-content/uploads/', IMG_BASE + '/')
         assert 'wp-content' not in xml, f"{name} still names wp-content"
         open(os.path.join(DEST, name), 'w', encoding='utf-8').write(xml)
         locs = xml.count('<loc>')

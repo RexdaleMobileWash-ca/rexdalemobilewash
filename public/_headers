@@ -25,10 +25,12 @@
   X-Robots-Tag: noindex, follow
 
 # The live site sends `cache-control: max-age=86400` on every image, stylesheet
-# and script. Without these the port revalidates all ~1MB of CSS and every photo
-# on every page view — a regression no render comparison can see.
-/images/*
-  Cache-Control: max-age=86400
+# and script. Without these the port revalidates all ~1MB of CSS on every page
+# view — a regression no render comparison can see.
+#
+# No /images/* rule: under AD-9 the Worker serves no images. They come from
+# img.rexdalemobilewash.ca, which answers with its own `cache-control:
+# max-age=14400` and a `cf-cache-status`, and a rule here would never match.
 /css/*
   Cache-Control: max-age=86400
 /js/*

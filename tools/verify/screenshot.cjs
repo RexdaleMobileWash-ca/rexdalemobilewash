@@ -10,6 +10,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const { routeImages } = require('./img-route.cjs');
 
 const WORK = process.env.PORT_WORK || path.join(__dirname, '..', '..', '.port-work');
 const OUT = process.argv[2] || path.join(WORK, 'shots');
@@ -31,6 +32,9 @@ async function setup(ctx) {
   for (const g of ['**://www.googletagmanager.com/**', '**://www.google.com/**',
                    '**://www.gstatic.com/**', '**://fonts.gstatic.com/**'])
     await ctx.route(g, (r) => r.abort());
+  // img.[domain] is unreachable from Chromium here; serve the same bytes
+  // from the bucket's staging directory. See tools/verify/img-route.cjs.
+  await routeImages(ctx);
 }
 
 async function settle(page) {

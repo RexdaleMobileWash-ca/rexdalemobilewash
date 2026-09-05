@@ -5,7 +5,7 @@
 # Cloudflare rules.
 
 # WordPress answers /favicon.ico with a 302 to the Site Icon.
-/favicon.ico  /images/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp  302
+/favicon.ico  https://img.rexdalemobilewash.ca/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp  302
 
 # Trailing slash: the live site answers 301 here. Cloudflare's own
 # auto-trailing-slash handling answers 307, which passes no ranking signal.

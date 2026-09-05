@@ -53,7 +53,12 @@ SKIP = re.compile(r'''rel=['"]?(alternate|shortlink|EditURI|https://api\.w\.org/
     |fonts\.(googleapis|gstatic)
     |rel=['"]?stylesheet
     |charset''', re.X)
-ASSET = re.compile(r'https?://(?:www\.)?(?:new\.)?rexdalemobilewash\.ca/(?:wp-content/uploads|images)/')
+# Fold every spelling of "this site's own media library" to one form, so the diff is
+# about the tags rather than about the AD-9 move. Live writes
+# www.rexdalemobilewash.ca/wp-content/uploads/, the port writes the image host.
+IMG_HOST = json.load(open(os.path.join(_ROOT, 'image-hosts.json')))['canonical']
+ASSET = re.compile(r'https?://(?:' + re.escape(IMG_HOST) + r'|(?:www\.)?(?:new\.)?'
+                   r'rexdalemobilewash\.ca/(?:wp-content/uploads|images))/')
 
 
 def get(url):

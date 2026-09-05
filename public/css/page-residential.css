@@ -17,7 +17,7 @@
 
 
 .u-section-2 {
-  background-image: url("/images/2020/12/HOSE.jpg");
+  background-image: url("https://img.rexdalemobilewash.ca/2020/12/HOSE.jpg");
   background-position: 50% 50%;
 }
 .u-section-2 .u-sheet-1 {
@@ -121,7 +121,7 @@
 /*/RESPONSIVE_MEDIA*/
 
 .u-section-4 {
-  background-image: linear-gradient(0deg, rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url("/images/2020/12/RexdaleRobotElephant2.jpg");
+  background-image: linear-gradient(0deg, rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url("https://img.rexdalemobilewash.ca/2020/12/RexdaleRobotElephant2.jpg");
 }
 .u-section-4 .u-sheet-1 {
   min-height: 527px;

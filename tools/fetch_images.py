@@ -5,7 +5,11 @@ REPO_ROOT = _os.environ.get('PORT_REPO') or _os.path.dirname(_os.path.dirname(_o
 
 import json, os, urllib.request, sys, time
 S=WORK
-DEST=REPO_ROOT+'/public/images'
+# The bucket's staging directory, not public/. Images are served from img. (AD-9), so a
+# photo downloaded into the repo would be one the Worker ships, gate 5's reconciliation
+# never sees, and the image host does not hold. Re-run tools/reconcile-images.py after
+# this to put anything new into the bucket.
+DEST=S+'/b2-staging'
 paths=json.load(open(S+'/media_final.json'))
 ok=fail=skip=0; failures=[]
 for p in paths:

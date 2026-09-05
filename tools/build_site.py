@@ -5,6 +5,7 @@ Fidelity rules this script enforces:
   * markup is copied, never retyped
   * CSS is taken from what the live site actually serves, in document order
   * no reference may survive that points at rexdalemobilewash.ca (old server)
+  * every image address is built from image-hosts.json, so it is img. or it is a bug
 """
 import os as _os
 WORK = _os.environ.get('PORT_WORK') or _os.path.join(
@@ -23,9 +24,25 @@ HDRMODEL = json.load(open(S+'/header_model.json'))
 NEUTRAL  = open(S+'/header.neutral.html', encoding='utf-8').read()
 
 P = lambda *a: os.path.join(REPO, *a)
-for d in ('src/pages','src/layouts','src/components','src/html','public/css','public/js',
-          'public/images/instagram'):
+for d in ('src/pages','src/layouts','src/components','src/html','public/css','public/js'):
     os.makedirs(P(d), exist_ok=True)
+
+# ---------------------------------------------------------------- the image host (AD-9)
+# Every image address this script emits is built from here, so the generator and
+# bin/check-images.mjs read the same one file and cannot disagree.
+#
+# It is baked in absolute, not left as a ${PUBLIC_IMG_BASE} placeholder resolved at
+# `astro build`. public/css/page-*.css is copied to dist verbatim — Astro never parses
+# it — so a placeholder in a hero's background-image url() would ship to the browser
+# literally. One host in one JSON file is the substitute for the env var.
+IMGCFG   = json.load(open(P('image-hosts.json')))
+IMG_BASE = 'https://' + IMGCFG['canonical']
+
+# The bucket's staging directory doubles as the download cache. Images are no longer
+# served out of the repo, so a photo landing in public/ would be a file the Worker
+# ships, gate 5's reconciliation never sees, and img. does not hold.
+INSTA_DIR = os.path.join(S, 'b2-staging', 'instagram')
+os.makedirs(INSTA_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------- shared inline CSS
 # These four blocks are byte-identical on every page; they become vendor files so the
@@ -108,7 +125,7 @@ def fetch(url, tries=4):
             time.sleep(2**a)
 
 def localize_instagram(text):
-    """Instagram CDN urls are signed and expire. Freeze them into public/images/instagram/."""
+    """Instagram CDN urls are signed and expire. Freeze them into the bucket."""
     out = text
     for raw in sorted(set(re.findall(r'https://scontent[^"\'\s\\)]+', text)), key=len, reverse=True):
         real = html.unescape(raw)
@@ -116,12 +133,13 @@ def localize_instagram(text):
         if raw not in INSTA:
             name = hashlib.md5(key.encode()).hexdigest()[:16] + os.path.splitext(key)[1].split('?')[0]
             if not name.endswith(('.jpg','.jpeg','.png','.webp','.mp4')): name += '.jpg'
-            dest = P('public/images/instagram', name)
+            dest = os.path.join(INSTA_DIR, name)
+            served = IMG_BASE + '/instagram/' + name
             if os.path.exists(dest) and os.path.getsize(dest) > 0:
-                INSTA[raw] = '/images/instagram/'+name
+                INSTA[raw] = served
             else:
                 code, data = fetch(real)
-                INSTA[raw] = ('/images/instagram/'+name) if (code == 200 and len(data) > 500) else None
+                INSTA[raw] = served if (code == 200 and len(data) > 500) else None
                 if INSTA[raw]: open(dest,'wb').write(data)
         if INSTA[raw]:
             out = out.replace(raw, INSTA[raw])
@@ -164,14 +182,24 @@ def inject_full_feed(text):
     return text[:m.end()] + '\n' + tiles + '\n\t' + text[end:]
 
 def rewrite(text):
-    """Point every old-server reference at this site's own assets."""
+    """Point every old-server reference at this site's own assets, images at img.."""
     text = inject_full_feed(text)
     for host in ('https://www.new.rexdalemobilewash.ca', 'http://www.new.rexdalemobilewash.ca',
                  'https://new.rexdalemobilewash.ca',      'http://new.rexdalemobilewash.ca',
                  'https://www.rexdalemobilewash.ca',      'http://www.rexdalemobilewash.ca',
                  'https://rexdalemobilewash.ca',          'http://rexdalemobilewash.ca'):
-        text = text.replace(host + '/wp-content/uploads/', '/images/')
+        text = text.replace(host + '/wp-content/uploads/', IMG_BASE + '/')
     text = localize_instagram(text)
+    # Anything still asking the Worker for /images/ moves to the image host too.
+    #
+    # It is not dead code. tools/capture/instagram-tiles.html was harvested and
+    # committed with its CDN links already rewritten to /images/instagram/ — a
+    # deliberate freeze, because those links were signed and expiring — so
+    # localize_instagram() finds only one scontent URL left to resolve and the
+    # other 157 tiles arrive pre-pointed at a path the Worker no longer serves.
+    # Catching them here rather than re-writing the capture keeps the capture what
+    # was actually fetched, and covers any other stray by construction.
+    text = text.replace('/images/', IMG_BASE + '/')
     # The Smash Balloon plugin's responsive-size blob. It is read only by
     # sbi-scripts.js, which needs the WordPress AJAX endpoint and so is not
     # shipped; every URL inside it is a signed Instagram CDN link that expires.
@@ -317,17 +345,22 @@ def static_instagram(text):
     return text
 
 def rewrite_absolute(text):
-    """For head metadata and JSON-LD: keep the canonical domain, fix asset paths.
+    """For head metadata and JSON-LD: keep the canonical domain, move images to img..
 
     canonical / og:url / schema @ids must stay absolute on the production domain —
-    that is what this site will be. Only the /wp-content/uploads/ asset paths inside
-    them are wrong, because those files live at /images/ here.
+    that is what this site will be. The /wp-content/uploads/ paths inside them are a
+    different thing: those are image addresses, and under AD-9 they go to img..
+
+    og:image is the one that has to be right the first time. It is copied into
+    Facebook, LinkedIn and Slack unfurl caches, so it keeps resolving to whatever it
+    said long after gate 16 kills the WordPress server — and the previews break with
+    nothing on the site to explain why.
     """
     PROD = 'https://www.rexdalemobilewash.ca'
     STAGING = ('https://www.new.rexdalemobilewash.ca', 'http://www.new.rexdalemobilewash.ca',
                'https://new.rexdalemobilewash.ca',     'http://new.rexdalemobilewash.ca')
     for host in (PROD, 'http://www.rexdalemobilewash.ca') + STAGING:
-        text = text.replace(host + '/wp-content/uploads/', PROD + '/images/')
+        text = text.replace(host + '/wp-content/uploads/', IMG_BASE + '/')
     # The staging host has no DNS record at all; anything still naming it is dead.
     for host in STAGING:
         text = text.replace(host, PROD)
@@ -420,9 +453,30 @@ def head_meta(doc):
     if m: meta['jsonld'] = m.group(1).strip()
     # head metadata keeps the production domain; only asset paths inside it move
     meta['jsonld'] = rewrite_absolute(meta['jsonld']) if meta['jsonld'] else None
-    meta['og'] = [(k, rewrite_absolute(v)) for k, v in meta['og']]
-    meta['named'] = [(k, rewrite_absolute(v)) for k, v in meta['named']]
+    meta['og'] = [(k, degravatar(k, rewrite_absolute(v))) for k, v in meta['og']]
+    meta['named'] = [(k, degravatar(k, rewrite_absolute(v))) for k, v in meta['named']]
     return meta
+
+# The one image on this site that is not the client's, and the AD-9 check found it.
+SITE_LOGO = IMG_BASE + '/2020/12/logoclear-1.png'
+
+def degravatar(key, value):
+    """Put the site logo on /author/admin/'s social card instead of a Gravatar hotlink.
+
+    Yoast sets og:image on the author archive to the author's Gravatar. That address
+    is off-host, so it fails the AD-9 check — and the two obvious ways out are both
+    wrong. Allowlisting secure.gravatar.com is a hotlink with permission. Mirroring
+    the file into the bucket copies in a grey silhouette: the admin email has no
+    Gravatar, so `d=mm` is serving the generic mystery-person placeholder, and it is
+    not the client's image in any sense.
+
+    The logo is what a share card for this business should carry, it is already in the
+    bucket, and Yoast itself names it as the organisation's logo in the JSON-LD on the
+    same page. Listed under Deliberate differences in the README.
+    """
+    if key in ('og:image', 'twitter:image') and 'gravatar.com' in value:
+        return SITE_LOGO
+    return value
 
 # A capture file is one flat name per page; the route it serves at can be nested.
 # Anything not listed here is served at /<slug>/ from src/pages/<slug>.astro.

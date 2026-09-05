@@ -6,6 +6,7 @@ const REPO_ROOT = process.env.PORT_REPO || _path.join(__dirname, '..', '..');
 // restructuring, which is the thing under test.
 const { chromium } = require('playwright');
 const fs = require('fs');
+const { routeImages } = require('./img-route.cjs');
 
 const S = WORK;
 const OUT = S + '/compare';
@@ -65,6 +66,9 @@ async function setup(ctx) {
   for (const g of ['**://www.googletagmanager.com/**', '**://www.google.com/**',
                    '**://www.gstatic.com/**', '**://fonts.gstatic.com/**', '**://scontent*/**'])
     await ctx.route(g, (route) => route.abort());
+  // img.[domain] is unreachable from Chromium here; serve the same bytes
+  // from the bucket's staging directory. See tools/verify/img-route.cjs.
+  await routeImages(ctx);
 }
 
 async function measure(page, url) {
