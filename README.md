@@ -77,14 +77,26 @@ preview URLs .................... disabled
 ### Deploy test, run against the deployed host
 
 ```bash
-DEPLOY_HOST=https://rexdalemobilewash.ash-47a.workers.dev npm run verify:deploy
+DEPLOY_HOST=https://staging.rexdalemobilewash.ca npm run verify:deploy
 ```
 
 ```
 pages 200 ........................ 18 of 18
-distinct assets fetched .......... 293   (292 × 200, 1 × 404)
+distinct assets fetched .......... 52    (51 × 200, 1 × 404)
 assets on the old server ......... 0     *** the field that matters ***
 unknown path ..................... HTTP 404 + ported 404 page
+```
+
+It was 293 before the images moved to `img.`. `verify:deploy` fetches
+same-origin assets, and the Worker no longer serves any image — which is the
+point, and also means this number no longer covers them. Measured separately
+against the deployed pages rather than `dist/`:
+
+```
+image hosts referenced by the 18 deployed pages
+  831 references, all on img.rexdalemobilewash.ca, 0 anywhere else
+  223 distinct addresses, 223 served as an image, 0 failures
+/favicon.ico ..................... 302 -> https://img.rexdalemobilewash.ca/…
 ```
 
 The single 404 is `/wp-login.php` on `/blog-post-title/` — the "log in to leave a
