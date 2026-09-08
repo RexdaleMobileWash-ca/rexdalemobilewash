@@ -5,7 +5,7 @@ import type { APIRoute } from 'astro';
 // that looked wired. NOT `import.meta.env` either — that inlines what the BUILD saw,
 // which for a Worker secret is nothing.
 import { env } from 'cloudflare:workers';
-import { FROM, TO, REPLY_TO, MESSAGES } from '../../contact.config';
+import { FROM, TO, REPLY_TO_SENDER, MESSAGES } from '../../contact.config';
 
 // The one route on this site that is NOT prerendered, and the reason the
 // Cloudflare adapter is here at all. A prerendered API route is written to a
@@ -154,22 +154,19 @@ function body(spec: FormSpec, v: Record<string, string>, meta: { ip: string; pag
   const name = v[spec.fields[0][1]] || from;
 
   const text = rows.map(([k, val]) => `${k}: ${val}`).join('\n\n') +
-    `\n\n---\nSent from the contact form on ${meta.page}\n` +
-    `Reply to the sender: ${from}\n`;
+    `\n\n---\nReply to this email to answer ${name} at ${from}\n` +
+    `Sent from the contact form on ${meta.page}\n`;
 
-  // Reply-To on this message is the client's own address (gate 11), so a plain
-  // Reply goes to them rather than to the TBOX sending domain nobody reads. The
-  // sender's address is therefore given here as a one-click mailto with the
-  // subject prefilled, so answering the enquiry is still a single action.
   const subject = spec.subjectField ? v[spec.subjectField] : spec.subject || 'your enquiry';
-  const mailto = `mailto:${encodeURIComponent(from)}` +
-    `?subject=${encodeURIComponent('Re: ' + subject)}`;
 
+  // No "reply to the sender" button: Reply-To is the sender, so the mail client's
+  // own Reply already does it. A second way to do the same thing is one the
+  // client has to think about.
   const html =
     `<div style="font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#222">` +
-    `<p style="margin:0 0 18px"><a href="${esc(mailto)}" ` +
-    `style="display:inline-block;padding:10px 18px;background:#0d6efd;color:#fff;` +
-    `border-radius:4px;text-decoration:none;font-weight:600">Reply to ${esc(name)}</a></p>` +
+    `<p style="margin:0 0 18px;padding:10px 14px;background:#eef4ff;border-radius:4px">` +
+    `<strong>Reply to this email</strong> to answer ${esc(name)} at ` +
+    `<a href="mailto:${esc(encodeURIComponent(from))}">${esc(from)}</a>.</p>` +
     `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">` +
     rows.map(([k, val]) =>
       `<tr><td style="padding:4px 16px 4px 0;vertical-align:top;color:#666;` +
@@ -293,7 +290,9 @@ export const POST: APIRoute = async ({ request }) => {
       body: JSON.stringify({
         from: FROM,
         to: TO,
-        reply_to: REPLY_TO,
+        // The visitor's address, so the client's Reply answers the lead. It is
+        // never `from` — that is forgery to the receiving mail server.
+        ...(REPLY_TO_SENDER ? { reply_to: header(values[spec.emailField]) } : {}),
         subject: header(`Website enquiry: ${subject}`),
         text,
         html,

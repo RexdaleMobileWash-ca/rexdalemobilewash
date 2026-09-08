@@ -441,36 +441,61 @@ disabling the button instead, which costs no layout. This is why the port stays
 ### Addressing
 
 ```
-From ....... a TBOX sending domain, never the client's
-To ......... dispatch@rexdalemobilewash.ca
-Reply-To ... the client's own address (gate 11)
+From ....... website@rexdalemobilewash.ca      the client's own domain
+To ......... customerservice@rexdalemobilewash.ca
+Reply-To ... the visitor who filled the form
 ```
 
-**The client's domain is never a sending domain.** That is what makes it
-impossible for this form to damage their mail reputation: nothing here sends as
-`rexdalemobilewash.ca`, so a bounce or a spam complaint lands on the sending
-domain instead of on them. A visitor's address is never put in `From` either —
-that is forgery to the receiving mail server, and it lands the notification in
-spam.
+All three are in `src/contact.config.ts`, and two of them depart from gate 11's
+letter on purpose.
 
-> **Two things to confirm before the first real send.**
->
-> **The recipient is inferred, not carried over.** CF7's recipient lives in the
-> WordPress admin, which this migration never read. `dispatch@` is what the
-> site's own header and footer link with the subjects "Website Inquiry" and
-> "From Rexdale Website", while `customerservice@` is the general address
-> printed in page bodies — so `dispatch@` is the better reading, but it is a
-> reading. It is one line in `src/contact.config.ts`.
->
-> **Reply-To is the client's address because the gate says so, and that is
-> worth a second look.** The notification goes *to* the client, so hitting
-> Reply addresses themselves. The gate's stated check is that a reply must
-> reach the client and not the TBOX sending domain, which this satisfies — but
-> what the client will actually want is to answer the lead. Until that is
-> settled the notification carries the sender's address as a one-click
-> **Reply to <name>** button with the subject prefilled, so answering an
-> enquiry is still a single action. Changing `REPLY_TO` to the visitor's
-> address is a one-line change if that is the call.
+**A visitor's address is never put in `From`.** That is forgery from the
+receiving mail server's point of view and it lands the notification in spam.
+It goes in `Reply-To`, which is what makes Reply answer the lead.
+
+### Sending as the client's own domain
+
+Gate 11 says never to use the client's domain as a sending domain, and the
+reason is real: a bounce or a spam complaint then lands on the reputation of the
+domain that also carries their Microsoft 365 business mail. This build was
+directed to use it anyway. Two things make that a much smaller risk here than
+the general rule assumes:
+
+- **The only recipient is the client, at an address on the same domain.** This
+  is not a mailing to strangers who can mark it as spam; it is the business
+  emailing itself when someone fills a form.
+- **The DNS already supports it and does not change.** Resend is set up on this
+  domain with DKIM at `resend._domainkey` and a *separate return path* at
+  `send.rexdalemobilewash.ca`, which carries its own SPF
+  (`include:amazonses.com`) and its own bounce MX. So the apex SPF —
+  `v=spf1 include:secureserver.net -all`, the one serving their real mail — is
+  not involved and is not touched. DKIM and SPF both align with
+  `rexdalemobilewash.ca`, so DMARC passes.
+
+What it buys: the notification looks like the business rather than a third
+party, and it authenticates cleanly into Microsoft 365.
+
+> **Watch the first one for Microsoft's own spoof filter.** Mail arriving from
+> outside that claims to be from your own domain is exactly what M365
+> anti-spoofing looks for. Authenticated same-domain mail normally passes, and
+> everything above is authenticated — but if the first test message is missing,
+> look in **Junk** and then in the M365 quarantine before assuming the route
+> failed. Adding Resend to the tenant's allowed senders is the fix if it comes
+> to that.
+
+### Reply-To is the lead, not the client
+
+Gate 11's letter puts the client's own address here. That makes Reply address
+the client themselves, which is useful to nobody — and the check the gate
+actually states, that a reply must not go to the sending domain, passes either
+way. So Reply answers the lead, and the notification says so at the top rather
+than carrying a second button that does the same thing.
+
+**The recipient was a decision, not a carry-over.** CF7's recipient lives in the
+WordPress admin, which this migration never read. `customerservice@` is the
+address printed in the page bodies on all 15 Nicepage pages; `dispatch@` is the
+one the header and footer link with the subjects "Website Inquiry" and "From
+Rexdale Website". `customerservice@` was chosen.
 
 ### The API key is a Worker secret
 
@@ -594,16 +619,17 @@ CNAME  sip                           sipdir.online.lync.com
 SRV    _sip._tls / _sipfederationtls sipdir / sipfed.online.lync.com
 ```
 
-Unchanged. This gate added no DNS record at all — the sending domain is TBOX's,
-which is the point of the addressing above.
+Unchanged, and this gate added no DNS record at all.
 
-> **The client's domain is already set up as a Resend sending domain**, by
-> something outside this migration: `resend._domainkey` carries a DKIM key and
-> `send.rexdalemobilewash.ca` has its own SPF and an MX to
-> `feedback-smtp.us-east-1.amazonses.com`. Those records are left exactly as
-> found — removing another system's mail configuration is not this gate's call —
-> but **this form does not use them**, and under AD's addressing rule it should
-> not.
+The Resend records were already on the zone before this gate — `resend._domainkey`
+carrying a DKIM key, and `send.rexdalemobilewash.ca` with its own SPF and an MX
+to `feedback-smtp.us-east-1.amazonses.com` for bounces. They are left exactly as
+found, and they are what makes sending as `rexdalemobilewash.ca` authenticate.
+Note what they do *not* touch: the apex SPF still reads
+`v=spf1 include:secureserver.net -all` and the apex MX still points at Microsoft
+365, because Resend's return path is the `send.` subdomain rather than the apex.
+That separation is why this form cannot affect the client's real mail flow even
+though it sends as their domain.
 
 ## How the port is structured
 
@@ -864,7 +890,7 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Twelve, all forced, all verified:
+Thirteen, all forced, all verified:
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -1022,6 +1048,17 @@ Twelve, all forced, all verified:
     the bucket and Yoast itself names it as the organisation's logo in the
     JSON-LD on the same page. This is the single remaining difference in
     `npm run verify:head`, which is otherwise 17/18 exact against the live site.
+
+13. **The contact forms post to `/api/contact/`, not to the page.** Both forms'
+    `action` attributes are rewritten — CF7's from `/<page>/#wpcf7-f372-…` and
+    Nicepage's from `#` — because on the live site JavaScript intercepted both
+    submits and the attribute was never followed. Each also gains one hidden
+    honeypot input. Nothing renders differently: the port is 18/18
+    pixel-identical with the forms wired. See
+    [The contact forms](#the-contact-forms) for what each form was doing before,
+    and for the two places this deliberately departs from gate 11 — sending as
+    the client's own domain, and putting the lead rather than the client in
+    `Reply-To`.
 
 ## Known issues carried over from the live site
 
