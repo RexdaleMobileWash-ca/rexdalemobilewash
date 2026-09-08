@@ -17,6 +17,7 @@ it is listed under [Deliberate differences](#deliberate-differences) below.
 | Images | none in the repo — every one comes from `img.rexdalemobilewash.ca` (AD-9) |
 | CSS | the live site's own sheets, vendored, in the live load order, pruned per page |
 | JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel, lightbox and parallax need them) |
+| Forms | both post to `/api/contact/` -> Resend; see [The contact forms](#the-contact-forms) |
 | Analytics | the same GTM container, `GTM-NMTLRJ63`, with gtm4wp's `dataLayer` push |
 | Non-page files | the five Yoast sitemaps, `robots.txt`, `_headers`, `_redirects` |
 | Payload | ~1443KB → ~1081KB linked per page (25% smaller); see [Pruning](#pruning) |
@@ -31,12 +32,12 @@ Routes: `/`, `/what-we-do/`, `/who-we-service/`, `/buildings/`, `/de-icing-servi
 
 ```bash
 npm install          # do NOT use --omit=optional; it strips the rolldown native binding
-npm run build        # 19 pages, every one prerendered
+npm run build        # 19 prerendered pages + the one on-demand route, /api/contact/
 ```
 
 The Worker is configured by `wrangler.jsonc`. Host is Cloudflare Workers (AD-1);
-the adapter exists so that one on-demand route (`/api/contact`, added at gate 11)
-can run, while every page stays a prerendered file.
+the adapter exists so that one on-demand route (`/api/contact/`, gate 11) can
+run, while every page stays a prerendered file.
 
 > **`wrangler.jsonc` diverges from the gate 3 template.** That template sets
 > `"main": "./dist/_worker.js/index.js"`. `@astrojs/cloudflare` 14.x builds via
@@ -167,8 +168,9 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
 
 ### Still to do
 
-1. Gate 11 wires the contact form to Resend at `/api/contact` — it is markup only
-   today, on 14 pages.
+1. **Gate 11 needs one thing from Resend**: a verified sending domain and an API
+   key added as a **Worker secret**. Everything else is built and proven — see
+   [The contact forms](#the-contact-forms).
 2. Gate 13 attaches the real domain, after the `.ca` zone is active, and with it
    the zone's *Always Use HTTPS* setting; `http://` is not upgraded today.
 3. Gate 14 publishes the old-URL redirects. See
@@ -176,9 +178,9 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
 
 ## Images
 
-The pages still ship images from `public/images/` in this repo. Gates 4 to 7 are
-done, so the same files are also live at `https://img.rexdalemobilewash.ca/`
-(AD-9); the pages get pointed at it in the swap described under **Still to do**.
+Gates 4 to 7 are done and the pages point at the bucket: there is no
+`public/images/` in this repo, and every image address on the site is
+`https://img.rexdalemobilewash.ca/…` (AD-9).
 
 ### Gate 4 — the bucket (done)
 
@@ -367,6 +369,207 @@ in the JSON-LD on the same page. Listed under
 
 **The site must never reference `*.backblazeb2.com`.** That path bypasses
 Cloudflare and bills the client for every image view.
+
+## The contact forms
+
+Gate 11. `/api/contact/` is the one route on this site that is **not**
+prerendered, and the reason the Cloudflare adapter is here at all.
+
+**There are two forms, not one, and the second is easy to miss.**
+
+```
+Contact Form 7      14 pages   Name / Email / Subject / Message
+Nicepage u-inner-form  1 page   Name / Email / Address   (/residential/ only)
+```
+
+`/residential/` carries both, so a grep for `wpcf7-form` finds a form on that
+page and stops looking. They were broken in different ways:
+
+- **CF7** posts to `action="/<page>/#wpcf7-f372-p195-o1"` — the page itself,
+  because on the live site CF7's JavaScript intercepts the submit and posts to
+  WordPress's REST endpoint, so the browser never follows that action. That JS
+  needs the WordPress AJAX endpoint and is not shipped, so nothing intercepted,
+  the browser did the native POST, and the Worker answered **405 with an empty
+  body** — a blank error page on 14 pages.
+- **Nicepage's form** posts to `action="#"`, and `nicepage.js` *is* shipped: it
+  reads that attribute and sends a `FormData` there over jQuery with
+  `dataType:'json'`. So it was posting the form to the page and parsing an HTML
+  document as JSON. A silent failure rather than a blank page.
+
+Both now point at `/api/contact/`, which recognises which form submitted from
+the field names that arrive rather than from a hidden marker — a marker is one
+more thing a copy-paste of the markup can drop, and the field names already
+identify the form.
+
+### Three ways in, all handled
+
+```
+contact-form.js   fetch, JSON          -> JSON  {status, message, invalid[]}
+nicepage.js       FormData, wants JSON -> JSON  {success:true}   its own check
+no JavaScript     native form POST     -> 303 back to the page, ?form=sent
+```
+
+The third is why the form's `action` and `method` still point at a real
+endpoint: with `contact-form.js` blocked or failed the form still submits, and
+the 303 carries the outcome back to the same page and the same `#wpcf7-…`
+fragment the live site's own action used. The redirect target is built from the
+`Referer` and CF7's `_wpcf7_unit_tag`, both visitor-supplied, so both are
+constrained — a path that does not start with a single `/` could be
+`//evil.example`, a protocol-relative URL that redirects off-site.
+
+Telling the second and third apart is not the content type: `nicepage.js` sends
+`multipart/form-data`, exactly like a browser with JavaScript off, and a 303
+would break it. It is what the caller **accepts** — `Accept: application/json`
+or `X-Requested-With: XMLHttpRequest`.
+
+### It sets CF7's own classes
+
+The site already carries CF7's stylesheet verbatim, so `contact-form.js` sets
+the classes that stylesheet is written for — `form.sent` green, `form.invalid`
+yellow, `form.failed` red, `.wpcf7-not-valid-tip` under a bad field — and the
+states look like the original with no new CSS.
+
+**No spinner element, deliberately.** CF7's own script inserts
+`<span class="wpcf7-spinner">` beside the submit button and the vendored
+stylesheet still has the rules for it, so adding one is two lines. It is also
+`display:inline-block; width:24px; margin:0 24px`, and `visibility:hidden`
+reserves space — it would park 72px beside the button on all 14 form pages,
+permanently, for a one-second animation. Feedback during the request comes from
+disabling the button instead, which costs no layout. This is why the port stays
+18/18 pixel-identical with the forms wired.
+
+### Addressing
+
+```
+From ....... a TBOX sending domain, never the client's
+To ......... dispatch@rexdalemobilewash.ca
+Reply-To ... the client's own address (gate 11)
+```
+
+**The client's domain is never a sending domain.** That is what makes it
+impossible for this form to damage their mail reputation: nothing here sends as
+`rexdalemobilewash.ca`, so a bounce or a spam complaint lands on the sending
+domain instead of on them. A visitor's address is never put in `From` either —
+that is forgery to the receiving mail server, and it lands the notification in
+spam.
+
+> **Two things to confirm before the first real send.**
+>
+> **The recipient is inferred, not carried over.** CF7's recipient lives in the
+> WordPress admin, which this migration never read. `dispatch@` is what the
+> site's own header and footer link with the subjects "Website Inquiry" and
+> "From Rexdale Website", while `customerservice@` is the general address
+> printed in page bodies — so `dispatch@` is the better reading, but it is a
+> reading. It is one line in `src/contact.config.ts`.
+>
+> **Reply-To is the client's address because the gate says so, and that is
+> worth a second look.** The notification goes *to* the client, so hitting
+> Reply addresses themselves. The gate's stated check is that a reply must
+> reach the client and not the TBOX sending domain, which this satisfies — but
+> what the client will actually want is to answer the lead. Until that is
+> settled the notification carries the sender's address as a one-click
+> **Reply to <name>** button with the subject prefilled, so answering an
+> enquiry is still a single action. Changing `REPLY_TO` to the visitor's
+> address is a one-line change if that is the call.
+
+### The API key is a Worker secret
+
+Not a build variable. A build variable is visible while the build runs and
+absent when the route executes, so the form fails in production against a build
+that passed — the trap this gate is mostly about.
+
+> **And the way to read it changed under this gate.** The procedure says
+> `Astro.locals.runtime.env`. **Astro 7 removed that**, and the getter throws:
+> the route answered `500 Internal Server Error` on a build that passed, on a
+> form that looked correctly wired. The Astro 7 spelling is
+> `import { env } from 'cloudflare:workers'`, read inside the handler rather
+> than at module scope. Worth fixing in the gate 11 skill.
+
+Add it with `npx wrangler secret put RESEND_API_KEY`, or Workers → Settings →
+**Variables & Secrets** → add as a *Secret*. For local testing, `.dev.vars`
+(gitignored) at `dist/server/.dev.vars`, which is where `wrangler dev` reads it
+from for this adapter's output.
+
+### Abuse protection
+
+A form with no limit becomes a spam relay. Two layers, neither of which changes
+the page:
+
+**A honeypot** — a hidden text input named `your-website` on both forms. A
+person never sees it and never fills it; a bot that fills every field it finds
+does. A submission carrying it is answered as *sent* and never sent, because
+telling a spammer which check caught them is how they tune past it.
+
+**A rate limit** — 5 submissions per 60 seconds per IP, keyed on
+`CF-Connecting-IP`, which the edge sets and a caller cannot forge. It is the
+Workers rate-limiting binding declared in `wrangler.jsonc`, not a Cloudflare
+rate-limiting rule and not Turnstile:
+
+- a zone rate-limiting rule needs a permission this session's API token does not
+  carry (`request is not authorized`, on a Free zone)
+- Turnstile would put a visible widget into a page this port is pixel-matched
+  against
+
+The binding needs neither, lives in the repo where whoever reads the config can
+see it, and applies on every hostname the Worker answers on. It is checked after
+validation and the honeypot — so a bot spends its budget without ever reaching
+Resend — and before the send, so a burst cannot run up the client's bill.
+
+### Proven, against the real Workers runtime
+
+`npx wrangler dev --config dist/server/wrangler.json`, with a deliberately
+invalid key so the Resend call is real and its rejection is visible:
+
+```
+GET  /api/contact/                       405 + Allow: POST
+route prerendered                        no       dist/client has no api/ directory
+JSON, valid                              502      resend: 401 "API key is invalid"
+                                                  — the route reached Resend
+JSON, invalid                            422 {"invalid":["your-name","your-subject","your-email"]}
+honeypot filled                          200 {"status":"sent"}  and nothing sent
+no-JS form POST                          303 -> /contact-us/?form=failed#wpcf7-f372-p195-o1
+no-JS, invalid                           303 -> /fleet-washing/?form=invalid#wpcf7-f372-p125-o1
+nicepage FormData + Accept: json         502 (as above), never a 303
+nicepage, missing fields                 422 {"invalid":["email","message"]}
+text/plain body                          403      Astro's own CSRF origin check
+rate limit, 8 posts from one IP          5×502 then 429 + Retry-After: 60
+rate limit, a different IP               unaffected
+```
+
+Astro's CSRF check is worth knowing about: it rejects a form-encoded POST with
+no `Origin` header outright. Browsers always send one on a POST, so it costs
+nothing and adds a layer — but it means a `curl` test without `-H Origin:` gets
+a 403 that looks like a broken route.
+
+**Not yet proven, because it needs the key**: a real message arriving in the
+client's inbox, not in spam, and Resend reporting `last_event: delivered`. That
+is the rest of gate 11.
+
+### The client's own mail, re-checked
+
+Every gate that touches mail re-proves the client's own mail survived it. Read
+back from Cloudflare after this gate's changes, against the gate 0.3 baseline:
+
+```
+MX     rexdalemobilewash.ca          rexdalemobilewash-ca.mail.protection.outlook.com  prio 0
+TXT    rexdalemobilewash.ca          "v=spf1 include:secureserver.net -all"
+TXT    _dmarc                        v=DMARC1; p=none;
+CNAME  autodiscover                  autodiscover.outlook.com
+CNAME  lyncdiscover                  webdir.online.lync.com
+CNAME  sip                           sipdir.online.lync.com
+SRV    _sip._tls / _sipfederationtls sipdir / sipfed.online.lync.com
+```
+
+Unchanged. This gate added no DNS record at all — the sending domain is TBOX's,
+which is the point of the addressing above.
+
+> **The client's domain is already set up as a Resend sending domain**, by
+> something outside this migration: `resend._domainkey` carries a DKIM key and
+> `send.rexdalemobilewash.ca` has its own SPF and an MX to
+> `feedback-smtp.us-east-1.amazonses.com`. Those records are left exactly as
+> found — removing another system's mail configuration is not this gate's call —
+> but **this form does not use them**, and under AD's addressing rule it should
+> not.
 
 ## How the port is structured
 
@@ -803,22 +1006,14 @@ Faithfully reproduced, not introduced here:
 
 ## Not done here
 
-- **The contact form is markup only** — the largest remaining functional gap
-  against the live site, and it does not fail quietly. The markup is
-  byte-identical to live, down to `action="/contact-us/#wpcf7-f372-p195-o1"
-  method="post"`, but Contact Form 7's JavaScript is not shipped. On the live
-  site that JS intercepts the submit and posts to CF7's `wp-json` endpoint, so
-  the page never navigates. Here nothing intercepts it, the browser performs the
-  native POST, and the Worker answers **405 with an empty body** — a blank error
-  page, on 14 pages. Wiring it to Resend at `/api/contact` is **gate 11**
-  (`wp-15-connect-contact-form`), which comes before the domain is pointed at
-  this site at gate 13, so the public never sees it. Anyone testing the preview
-  hostname will.
-- **Images are in the repo, not Backblaze.** The stack serves images from
-  `img.rexdalemobilewash.ca` (AD-9, gates 4–7). They are local here so the port has
-  zero references to the old server; moving them is a path swap under
-  `public/images/`.
-- No Worker, no hostname, no DNS. That is gates 9–13.
+- **The contact forms cannot send until a Resend key is added.** The route, both
+  forms, validation, the no-JavaScript path, the honeypot and the rate limit are
+  all built and proven — see [The contact forms](#the-contact-forms). What is
+  missing is one API key as a Worker secret and a confirmed sending domain.
+  Without it `/api/contact/` answers `failed` and the visitor sees CF7's own
+  "try again later", which is a visible, honest failure rather than the blank
+  405 page the forms produced before.
+- No production hostname. That is gate 13.
 
 ### Old addresses that do not resolve yet — gate 14
 

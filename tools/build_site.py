@@ -223,6 +223,61 @@ def rewrite(text):
     for host in ('https://www.rexdalemobilewash.ca', 'http://www.rexdalemobilewash.ca',
                  'https://rexdalemobilewash.ca',      'http://rexdalemobilewash.ca'):
         text = text.replace(host + '/', '/').replace(host + '"', '/"')
+    text = wire_contact_form(text)
+    return text
+
+# With the trailing slash. Astro's `trailingSlash: 'always'` answers the unslashed
+# form with a 308 to this one, and Cloudflare's own auto-trailing-slash asset handling
+# answers a GET of it with a 301. A 308 does preserve the method and body, so the form
+# would still work — through a redirect on every submission, which is a needless round
+# trip and one more thing to break. This is the path that answers directly.
+CONTACT_ENDPOINT = '/api/contact/'
+
+HONEYPOT = ('<input type="text" name="your-website" value="" tabindex="-1" '
+            'autocomplete="off" aria-hidden="true" />')
+
+def wire_contact_form(text):
+    """Point both contact forms at this site's own endpoint (gate 11).
+
+    There are two, and both were dead in the port.
+
+    **Contact Form 7**, on 14 pages. Its action is `/<page>/#wpcf7-f372-p195-o1`
+    — the page itself, because CF7's JavaScript intercepts the submit and posts
+    to WordPress's REST endpoint, so the browser never follows it. That JS is
+    not shipped (it needs the WordPress AJAX endpoint), so nothing intercepted,
+    the browser performed the native POST, and the Worker answered 405 with an
+    empty body. Pointing the action at /api/contact turns that native POST into
+    the no-JavaScript path instead of the failure: the route reads form-encoded
+    bodies and answers 303 back to this page and this fragment with the outcome.
+
+    **Nicepage's own `u-inner-form`**, on /residential/ only — Name, Email,
+    Address. Easy to miss because the page also carries a CF7 form. Its action
+    is `#` and `nicepage.js` (which IS shipped) reads that attribute and POSTs a
+    FormData there over jQuery.ajax, so it was posting the form to the page and
+    parsing an HTML document as JSON. Same endpoint, same fix; the route
+    recognises it by its field names and answers the `{success:true}` shape
+    nicepage.js checks for.
+
+    Both get a honeypot: a text input named `your-website`, hidden, which a
+    person never sees and a bot that fills every field does. `tabindex="-1"` and
+    `autocomplete="off"` keep it away from anyone using the keyboard, and
+    `aria-hidden` keeps it out of a screen reader.
+    """
+    # Scoped by class rather than a bare `<form[^>]*action="`: /residential/ has
+    # both forms, and each needs its own anchor for the honeypot.
+    text = re.sub(r'(<form(?=[^>]*\bclass="[^"]*\bwpcf7-form\b)[^>]*\baction=")[^"]*(")',
+                  lambda m: m.group(1) + CONTACT_ENDPOINT + m.group(2), text)
+    text = re.sub(r'(<form(?=[^>]*\bclass="[^"]*\bu-inner-form\b)[^>]*\baction=")[^"]*(")',
+                  lambda m: m.group(1) + CONTACT_ENDPOINT + m.group(2), text)
+    # CF7: into the hidden container it already has, which cannot be anywhere else
+    text = text.replace('<input type="hidden" name="_wpcf7" ',
+                        HONEYPOT + '\n<input type="hidden" name="_wpcf7" ', 1)
+    # Nicepage: it has no hidden container, so the field brings its own. A
+    # display:none wrapper is still submitted by the browser and still occupies
+    # no space, so the rendered page is unchanged.
+    text = re.sub(r'(<form[^>]*\bclass="[^"]*\bu-inner-form\b[^>]*>)',
+                  lambda m: m.group(1) + '\n<div style="display:none">' + HONEYPOT + '</div>',
+                  text, count=1)
     return text
 
 def static_instagram(text):
@@ -558,6 +613,9 @@ def main():
                            bodyClass=bcls.group(1) if bcls else '',
                            bodyAttrs=bextra,
                            needsNicepage=needs_nicepage,
+                           # the CF7 enhancement script ships only where there is
+                           # a CF7 form to enhance — 14 of the 18 routes
+                           hasForm='wpcf7-form' in content,
                            route=astro_route, url=url)
 
         open(P('src/html', f'{slug}.content.html'), 'w', encoding='utf-8').write(content)

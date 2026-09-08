@@ -44,6 +44,7 @@ for slug,d in sorted(meta.items()):
     if m.get('dataLayer'):   props.append(f'  dataLayer={{{js(m["dataLayer"])}}}')
     if jsonld:               props.append('  jsonld={jsonld}')
     if not d.get('needsNicepage', True): props.append('  needsNicepage={false}')
+    if d.get('hasForm'):     props.append('  hasForm={true}')
     props.append(f'  vendor={{{js(d["vendor"])}}}')
     props.append(f'  fonts={{{js(d["fonts"])}}}')
     lines.append('<SiteBase')

@@ -38,11 +38,13 @@ interface Props {
   vendor: string[];
   fonts: string[];
   needsNicepage?: boolean;
+  hasForm?: boolean;
 }
 
 const {
   slug, chrome = 'nicepage', bodyClass, title, description, canonical,
   robots, og = [], named = [], jsonld, vendor, fonts, needsNicepage = true,
+  hasForm = false,
   lang = 'en', viewport = 'width=device-width, initial-scale=1.0', profile,
   dataLayer, bodyAttrs = {},
 } = Astro.props;
@@ -139,5 +141,14 @@ const GTM_ID = 'GTM-NMTLRJ63';
         markup at all, so it is emitted only where something depends on it. */}
     {needsNicepage && <script is:inline src="/js/nicepage.js" />}
     {chrome === 'none' && <script is:inline src="/js/hello-frontend.min.js" />}
+
+    {/* Contact Form 7's own script is not shipped — it needs the WordPress AJAX
+        endpoint. This posts the form to /api/contact and sets the same classes
+        CF7 sets, so the site's vendored CF7 stylesheet paints the states. It is
+        an enhancement, not a dependency: with it blocked the form still submits
+        natively to the same endpoint. Only on the 14 routes that have a form.
+        The Nicepage form on /residential/ needs nothing extra — nicepage.js
+        already posts to whatever the form's action says. */}
+    {hasForm && <script is:inline src="/js/contact-form.js" />}
   </body>
 </html>

@@ -36,6 +36,23 @@
   "routes": [
     { "pattern": "staging.rexdalemobilewash.ca", "custom_domain": true }
   ],
+  // Abuse protection for /api/contact (gate 11). A form with no limit becomes a
+  // spam relay, and the two obvious alternatives were both unavailable here: a
+  // Cloudflare rate-limiting rule needs a zone-level permission this session's
+  // token does not carry, and Turnstile would put a visible widget into a page
+  // this port is pixel-matched against. The Workers rate-limiting binding needs
+  // neither — it lives in the repo, where it is visible to whoever reads this
+  // file, and it applies on every hostname the Worker answers on.
+  //
+  // 5 submissions per 60 seconds per IP. A person filling in one form sends one
+  // request; five in a minute from one address is already a script.
+  "ratelimits": [
+    {
+      "name": "CONTACT_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 5, "period": 60 }
+    }
+  ],
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "404-page",
