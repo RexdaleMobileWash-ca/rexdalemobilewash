@@ -168,12 +168,9 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
 
 ### Still to do
 
-1. **Gate 11 needs one thing from Resend**: a verified sending domain and an API
-   key added as a **Worker secret**. Everything else is built and proven — see
-   [The contact forms](#the-contact-forms).
-2. Gate 13 attaches the real domain, after the `.ca` zone is active, and with it
+1. Gate 13 attaches the real domain, and with it
    the zone's *Always Use HTTPS* setting; `http://` is not upgraded today.
-3. Gate 14 publishes the old-URL redirects. See
+2. Gate 14 publishes the old-URL redirects. See
    [Old addresses that do not resolve yet](#old-addresses-that-do-not-resolve-yet--gate-14).
 
 ## Images
@@ -582,9 +579,46 @@ That 500 is the route's own diagnostic, not a crash: it is the branch that fires
 when the secret is absent, and it logs *"RESEND\_API\_KEY missing at runtime — is
 it a Worker secret rather than a build variable?"*.
 
-**Not yet proven, because it needs the key**: a real message arriving in the
-client's inbox, not in spam, and Resend reporting `last_event: delivered`. That
-is the rest of gate 11.
+### The live send
+
+The key is a **sending-access** key scoped to `rexdalemobilewash.ca` alone — it
+cannot read the account, manage domains, or send as any other domain — added as
+a Worker secret. Three real submissions through the deployed site, read back
+from Resend:
+
+```
+                              CF7 form           Nicepage form (/residential/)
+resend status ............... delivered          delivered
+from ........................ Rexdale Mobile Wash website <website@rexdalemobilewash.ca>
+to .......................... customerservice@rexdalemobilewash.ca
+reply_to .................... the visitor's address, not the client's
+subject ..................... Website enquiry: <the visitor's subject>
+                                                Website enquiry: Residential enquiry
+field labels ................ Name/Email/Subject/Message
+                                                Name/Email/Address   <- its own wording
+page recorded ............... /contact-us/       /residential/
+```
+
+**The secret survives a redeploy.** `wrangler deploy` does not list secrets it
+did not upload, so its binding table shows only `IMAGES`, `CONTACT_RATE_LIMIT`
+and `ASSETS` and looks as though the key is gone. Reading the Worker's own
+bindings afterwards shows `RESEND_API_KEY -> secret_text`, and a submission after
+the redeploy still delivers. Worth knowing before someone re-adds it every time.
+
+> **Two things that cost a round each, recorded so they do not cost another.**
+>
+> The Resend MCP prints the new key immediately followed by the word
+> `IMPORTANT`, with nothing between them: `…K5B5gIMPORTANT: The token above…`.
+> The `I` belongs to `IMPORTANT`. Taking it as part of the key gives a 37-character
+> token where Resend's format is 36 (`re_` + 8 + `_` + 24), and every call comes
+> back `401 "API key is invalid"` — which reads like a permissions problem and is
+> not. Check the length.
+>
+> The first live notification carried `mailto:Paolo%40tboxstudio.com`, because the
+> address went through `encodeURIComponent` on its way into the href.
+> Percent-encoding is legal in a `mailto:` and most clients cope, but it reads as
+> broken wherever the raw href is shown. The address is already validated to hold
+> one `@` and no whitespace, so HTML-escaping is the whole of what is needed.
 
 ### One more thing the deploy turned up: `session: false`
 
@@ -1077,13 +1111,6 @@ Faithfully reproduced, not introduced here:
 
 ## Not done here
 
-- **The contact forms cannot send until a Resend key is added.** The route, both
-  forms, validation, the no-JavaScript path, the honeypot and the rate limit are
-  all built and proven — see [The contact forms](#the-contact-forms). What is
-  missing is one API key as a Worker secret and a confirmed sending domain.
-  Without it `/api/contact/` answers `failed` and the visitor sees CF7's own
-  "try again later", which is a visible, honest failure rather than the blank
-  405 page the forms produced before.
 - No production hostname. That is gate 13.
 
 ### Old addresses that do not resolve yet — gate 14

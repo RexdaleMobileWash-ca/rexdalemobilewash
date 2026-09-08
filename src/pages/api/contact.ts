@@ -162,11 +162,18 @@ function body(spec: FormSpec, v: Record<string, string>, meta: { ip: string; pag
   // No "reply to the sender" button: Reply-To is the sender, so the mail client's
   // own Reply already does it. A second way to do the same thing is one the
   // client has to think about.
+  //
+  // The address is HTML-escaped into the mailto, not encodeURIComponent'd. That
+  // looks like the safer call and is the wrong one: it percent-encodes the `@`,
+  // so the first live notification carried `mailto:Paolo%40tboxstudio.com`. Valid
+  // per RFC 6068 and handled by most clients, but not by all, and it reads as
+  // broken wherever a client shows the raw href. validate() has already required
+  // one `@` and no whitespace, so escaping is the whole of what is needed.
   const html =
     `<div style="font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#222">` +
     `<p style="margin:0 0 18px;padding:10px 14px;background:#eef4ff;border-radius:4px">` +
     `<strong>Reply to this email</strong> to answer ${esc(name)} at ` +
-    `<a href="mailto:${esc(encodeURIComponent(from))}">${esc(from)}</a>.</p>` +
+    `<a href="mailto:${esc(from)}">${esc(from)}</a>.</p>` +
     `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse">` +
     rows.map(([k, val]) =>
       `<tr><td style="padding:4px 16px 4px 0;vertical-align:top;color:#666;` +
