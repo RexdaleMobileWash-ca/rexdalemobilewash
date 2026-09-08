@@ -66,6 +66,13 @@ async function setup(ctx) {
   for (const g of ['**://www.googletagmanager.com/**', '**://www.google.com/**',
                    '**://www.gstatic.com/**', '**://fonts.gstatic.com/**', '**://scontent*/**'])
     await ctx.route(g, (route) => route.abort());
+  // Turnstile is unreachable from Chromium here. FULFIL it with an empty script
+  // rather than aborting: an aborted request is a FAILED request, and the render
+  // comparison counts those — it reported all 15 form pages as DIFF on nothing
+  // but this, while geometry, counts and text were identical. An empty stub
+  // loads cleanly, no widget renders, and both sides match.
+  await ctx.route('**://challenges.cloudflare.com/**', (r) =>
+    r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
   // img.[domain] is unreachable from Chromium here; serve the same bytes
   // from the bucket's staging directory. See tools/verify/img-route.cjs.
   await routeImages(ctx);

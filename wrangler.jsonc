@@ -46,6 +46,20 @@
   //
   // 5 submissions per 60 seconds per IP. A person filling in one form sends one
   // request; five in a minute from one address is already a script.
+  // The hourly half of the form rate limit (3 per form per hour, per IP). The
+  // rate-limiting binding below cannot express it — its period accepts only 10 or
+  // 60 seconds — so the hourly budget is a KV counter and the binding stays as
+  // the burst brake.
+  //
+  // THIS NAMESPACE MUST BE CREATED BEFORE DEPLOY:
+  //     npx wrangler kv namespace create FORM_RATE_LIMIT
+  // then paste the id it prints over the placeholder below. Until it exists the
+  // route logs "no KV binding for the hourly rate limit" on every submission and
+  // runs on the burst limiter alone — degraded, and saying so, rather than
+  // pretending the limit is there.
+  "kv_namespaces": [
+    { "binding": "FORM_RATE_LIMIT", "id": "REPLACE_WITH_NAMESPACE_ID" }
+  ],
   "ratelimits": [
     {
       "name": "CONTACT_RATE_LIMIT",

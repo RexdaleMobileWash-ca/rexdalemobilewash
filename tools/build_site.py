@@ -233,51 +233,61 @@ def rewrite(text):
 # trip and one more thing to break. This is the path that answers directly.
 CONTACT_ENDPOINT = '/api/contact/'
 
+# Off-screen, not display:none. A honeypot that is display:none is the first
+# thing a scripted submitter learns to skip, and the brief is explicit: it must
+# be off-screen, aria-hidden, tabindex="-1" and autocomplete="off", reachable by
+# neither a screen reader nor the keyboard. position:absolute takes it out of
+# flow so it cannot move the page; aria-hidden on the wrapper hides the subtree
+# from assistive technology; tabindex="-1" keeps it out of the tab order, which
+# is what stops aria-hidden being an ARIA violation over a focusable element.
+HIDDEN_WRAP = ('<div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;'
+               'width:1px;height:1px;overflow:hidden">')
 HONEYPOT = ('<input type="text" name="your-website" value="" tabindex="-1" '
             'autocomplete="off" aria-hidden="true" />')
+# Written by public/js/form-guard.js at page load; the route rejects a submission
+# completed in under three seconds. Empty in the markup on purpose — the pages are
+# prerendered, so a build-time timestamp would be the build's, not the visit's.
+DWELL = '<input type="hidden" name="form-loaded-at" value="" />'
+# Turnstile renders into this. It carries no sitekey in the markup: the sitekey
+# is a build variable, and hard-coding one here would put it in the repo and make
+# a per-environment widget impossible. form-guard.js reads it from the page.
+TURNSTILE = '<div class="cf-turnstile-mount"></div>'
+
+GUARD_FIELDS = HIDDEN_WRAP + HONEYPOT + DWELL + '</div>' + TURNSTILE
 
 def wire_contact_form(text):
-    """Point both contact forms at this site's own endpoint (gate 11).
+    """Point both contact forms at this site's own endpoint and arm the guards.
 
-    There are two, and both were dead in the port.
+    There are two forms, and both were dead in the port.
 
     **Contact Form 7**, on 14 pages. Its action is `/<page>/#wpcf7-f372-p195-o1`
     — the page itself, because CF7's JavaScript intercepts the submit and posts
     to WordPress's REST endpoint, so the browser never follows it. That JS is
     not shipped (it needs the WordPress AJAX endpoint), so nothing intercepted,
     the browser performed the native POST, and the Worker answered 405 with an
-    empty body. Pointing the action at /api/contact turns that native POST into
-    the no-JavaScript path instead of the failure: the route reads form-encoded
-    bodies and answers 303 back to this page and this fragment with the outcome.
+    empty body. Pointing the action at /api/contact/ turns that native POST into
+    the no-JavaScript path instead of the failure.
 
     **Nicepage's own `u-inner-form`**, on /residential/ only — Name, Email,
-    Address. Easy to miss because the page also carries a CF7 form. Its action
+    Address. Easy to miss because that page also carries a CF7 form. Its action
     is `#` and `nicepage.js` (which IS shipped) reads that attribute and POSTs a
-    FormData there over jQuery.ajax, so it was posting the form to the page and
-    parsing an HTML document as JSON. Same endpoint, same fix; the route
-    recognises it by its field names and answers the `{success:true}` shape
-    nicepage.js checks for.
+    FormData there over jQuery, so it was posting the form to the page and
+    parsing an HTML document as JSON. Same endpoint, same fix.
 
-    Both get a honeypot: a text input named `your-website`, hidden, which a
-    person never sees and a bot that fills every field does. `tabindex="-1"` and
-    `autocomplete="off"` keep it away from anyone using the keyboard, and
-    `aria-hidden` keeps it out of a screen reader.
+    Both then get the same three guard elements injected, so a form can never be
+    added to this site with the protection left off by accident — and
+    bin/check-forms.mjs fails the build if one ever is.
     """
     # Scoped by class rather than a bare `<form[^>]*action="`: /residential/ has
-    # both forms, and each needs its own anchor for the honeypot.
+    # both forms, and each needs its own injection point.
     text = re.sub(r'(<form(?=[^>]*\bclass="[^"]*\bwpcf7-form\b)[^>]*\baction=")[^"]*(")',
                   lambda m: m.group(1) + CONTACT_ENDPOINT + m.group(2), text)
     text = re.sub(r'(<form(?=[^>]*\bclass="[^"]*\bu-inner-form\b)[^>]*\baction=")[^"]*(")',
                   lambda m: m.group(1) + CONTACT_ENDPOINT + m.group(2), text)
-    # CF7: into the hidden container it already has, which cannot be anywhere else
-    text = text.replace('<input type="hidden" name="_wpcf7" ',
-                        HONEYPOT + '\n<input type="hidden" name="_wpcf7" ', 1)
-    # Nicepage: it has no hidden container, so the field brings its own. A
-    # display:none wrapper is still submitted by the browser and still occupies
-    # no space, so the rendered page is unchanged.
-    text = re.sub(r'(<form[^>]*\bclass="[^"]*\bu-inner-form\b[^>]*>)',
-                  lambda m: m.group(1) + '\n<div style="display:none">' + HONEYPOT + '</div>',
-                  text, count=1)
+    # Injected right after each form's opening tag, so the fields are inside the
+    # form and get submitted with it.
+    text = re.sub(r'(<form[^>]*\bclass="[^"]*\b(?:wpcf7-form|u-inner-form)\b[^>]*>)',
+                  lambda m: m.group(1) + '\n' + GUARD_FIELDS, text)
     return text
 
 def static_instagram(text):
@@ -613,9 +623,13 @@ def main():
                            bodyClass=bcls.group(1) if bcls else '',
                            bodyAttrs=bextra,
                            needsNicepage=needs_nicepage,
-                           # the CF7 enhancement script ships only where there is
-                           # a CF7 form to enhance — 14 of the 18 routes
-                           hasForm='wpcf7-form' in content,
+                           # form-guard.js and the Turnstile sitekey ship on any
+                           # page carrying either form. Both classes, not just
+                           # CF7's: a page with only the Nicepage form would
+                           # otherwise ship with no widget and be rejected by
+                           # its own server on every submission.
+                           hasForm=('wpcf7-form' in content
+                                    or 'u-inner-form' in content),
                            route=astro_route, url=url)
 
         open(P('src/html', f'{slug}.content.html'), 'w', encoding='utf-8').write(content)

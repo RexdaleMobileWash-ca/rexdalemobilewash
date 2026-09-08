@@ -17,7 +17,7 @@ it is listed under [Deliberate differences](#deliberate-differences) below.
 | Images | none in the repo — every one comes from `img.rexdalemobilewash.ca` (AD-9) |
 | CSS | the live site's own sheets, vendored, in the live load order, pruned per page |
 | JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel, lightbox and parallax need them) |
-| Forms | both post to `/api/contact/` -> Resend; see [The contact forms](#the-contact-forms) |
+| Forms | 15 forms, 2 kinds, both -> `/api/contact/` -> Resend, behind four bot-protection layers |
 | Analytics | the same GTM container, `GTM-NMTLRJ63`, with gtm4wp's `dataLayer` push |
 | Non-page files | the five Yoast sitemaps, `robots.txt`, `_headers`, `_redirects` |
 | Payload | ~1443KB → ~1081KB linked per page (25% smaller); see [Pruning](#pruning) |
@@ -375,12 +375,17 @@ prerendered, and the reason the Cloudflare adapter is here at all.
 **There are two forms, not one, and the second is easy to miss.**
 
 ```
-Contact Form 7      14 pages   Name / Email / Subject / Message
-Nicepage u-inner-form  1 page   Name / Email / Address   (/residential/ only)
+Contact Form 7          14 pages   Name / Email / Subject / Message
+Nicepage u-inner-form    1 page    Name / Email / Address   (/residential/, and
+                                   the only form on that page)
 ```
 
-`/residential/` carries both, so a grep for `wpcf7-form` finds a form on that
-page and stops looking. They were broken in different ways:
+`/residential/` carries **only** the Nicepage one — it is the single page with
+no CF7 form, which is why a grep for `wpcf7-form` finds 14 pages and misses it
+entirely. (An earlier version of this file said that page carried both. It does
+not; it has CF7's `wpcf7mailsent` event names in an inline script and a
+`.wpcf7-response-output` div, and no CF7 form.) They were broken in different
+ways:
 
 - **CF7** posts to `action="/<page>/#wpcf7-f372-p195-o1"` — the page itself,
   because on the live site CF7's JavaScript intercepts the submit and posts to
@@ -494,6 +499,236 @@ address printed in the page bodies on all 15 Nicepage pages; `dispatch@` is the
 one the header and footer link with the subjects "Website Inquiry" and "From
 Rexdale Website". `customerservice@` was chosen.
 
+### Bot protection — four layers, all server-side
+
+Built before launch rather than after the spam started. Every check is decided on
+the Worker from the request itself; the page can claim whatever it likes and none
+of it is believed. `src/lib/spam-guard.ts` holds all four.
+
+```
+1  Turnstile     token verified against siteverify. No valid token, no send.
+2  Honeypot      a field a person never sees, plus a 3-second dwell floor.
+3  Sanity        the email domain must be able to receive mail; no placeholders.
+4  Rate limit     3 per form per hour per IP, plus a 5-per-minute burst brake.
+```
+
+**The order is deliberate.** The free local checks run first, so a flood spends
+nothing of ours. The rate limit runs *before* Turnstile, so a flood cannot run up
+siteverify calls either. The two calls that leave the Worker — siteverify and the
+MX lookup — run last, and only for a submission that is otherwise plausible.
+
+#### Invisible, and what happens when it is not
+
+The widget renders with `appearance: 'interaction-only'`: it shows nothing, and
+becomes visible only if Turnstile decides a human must actually do something.
+That is a deliberate choice over the pure Invisible widget type, which *hard
+fails* the same visitor instead. A real customer who trips the heuristics gets a
+checkbox; they do not get a form that silently refuses them.
+
+It is not hidden with CSS anywhere. If Turnstile ever does need a human, they
+have to be able to see it.
+
+**Consequence worth stating plainly: with JavaScript off, the forms cannot be
+submitted at all.** Turnstile has no non-JS mode, so there is no token, so the
+server rejects. The no-JavaScript fallback built at gate 11 still runs — the
+form's `action` and `method` still point at a real endpoint and the 303 still
+carries the outcome back — but it will carry a rejection. That is the cost of
+"no valid token = reject, nothing sent", and it is the right trade for a form
+whose alternative is being farmed by bots.
+
+#### The honeypot is off-screen, not `display:none`
+
+`display:none` is the first thing a scripted submitter learns to skip. Measured
+in Chromium on the built page:
+
+```
+rect ................. -9324,-9179  34x44     off-screen, still rendered
+display: none ........ false
+aria-hidden .......... true                    on the wrapper and the input
+tabindex ............. -1
+autocomplete ......... off
+keyboard reachable ... false
+tab order ............ your-email > your-subject > your-message > submit
+```
+
+`tabindex="-1"` is what keeps `aria-hidden` from being an ARIA violation: the
+rule it would otherwise break is "no focusable element inside `aria-hidden`".
+
+A submission carrying anything in it is answered **200, "Thank you for your
+message"** and nothing is sent. Every other rejection tells the visitor what went
+wrong; this one lies, because telling a spammer which check caught them is how
+they tune past it.
+
+#### The dwell floor, and what it is worth
+
+`form-loaded-at` is stamped by the page's JavaScript at load, and a submission
+completed in under three seconds is rejected. Being honest about this layer: the
+timestamp is client-supplied and forgeable, and it costs a scripted submitter one
+line to defeat. It stops every bot that has not bothered. **Turnstile is the
+load-bearing layer; this is not.**
+
+Absent or unparseable is a rejection, not a pass — a submission that did not run
+the page's JavaScript has no Turnstile token either.
+
+#### MX is not the whole email test
+
+RFC 5321: a domain with **no MX but an A or AAAA record still receives mail
+there**. Checking MX alone rejects real, deliverable addresses, which is a worse
+failure than accepting a junk one — so the check is MX, then A, then AAAA, over
+DNS-over-HTTPS (a Worker has no resolver). `cloudflare.com` has no MX and is in
+the test suite for exactly this reason.
+
+A lookup that errors or times out **allows** the submission. Dropping real
+enquiries because a resolver had a bad minute is not a trade worth making; the
+miss is logged instead.
+
+#### Rate limiting takes two stores
+
+```
+burst    CONTACT_RATE_LIMIT   Workers binding   5 / 60s    no provisioning
+hourly   FORM_RATE_LIMIT      KV counter        3 / hour   needs a namespace
+```
+
+The Workers rate-limiting binding accepts a period of **10 or 60 seconds only**,
+so "3 per hour" is not expressible with it — hence the KV counter, keyed per
+form, so a visitor who used the contact form has not spent the residential
+form's allowance.
+
+Know what each is. Cloudflare documents the binding as counted **per data
+centre** and "intentionally designed to not be used as an accurate accounting
+system": a caller spread across colos gets a multiple of it. KV is
+account-global, so the hourly number is the one that holds — at the cost of being
+eventually consistent, which can let a simultaneous burst through before the
+counter catches up.
+
+**Not Turnstile-instead-of, and not a WAF rule.** A Cloudflare rate-limiting rule
+would be the enforcing layer, and this session's API token is refused on that API
+(`request is not authorized`, on a Free zone). Worth adding by hand later; it
+does not replace any of the above.
+
+#### Every rejection is logged
+
+One line, one shape, greppable in `wrangler tail`:
+
+```
+[spam-guard] REJECT {"ts":"…","form":"cf7","reason":"dwell-too-fast:412ms",
+                     "ip":"203.0.113.7","page":"/contact-us/","country":"CA"}
+```
+
+and one line per actual send, which is what makes "exactly once" checkable:
+
+```
+[contact] SENT {"ts":"…","form":"cf7","id":"…","page":"/contact-us/","ip":"…","country":"CA"}
+```
+
+#### Traceability in the notification itself
+
+Every notification footer carries the submitting page, the IP and the location,
+so a suspicious enquiry can be traced without going near the logs:
+
+```
+Sent from the contact form on /contact-us/ · 203.0.113.7 · Toronto, ON, CA
+```
+
+#### The build refuses to ship an unprotected form
+
+`bin/check-forms.mjs` runs inside `npm run build`, joined with `&&`. For every
+page carrying a `<form>` it requires the Turnstile mount, the sitekey meta, the
+guard script, the honeypot and the dwell field — one mount per form — and that
+every form posts to `/api/contact/`.
+
+This is the part that survives everyone forgetting. A form added later without
+protection does not look broken; it looks fine and is rejected by its own server
+on every submission, which reads to the client as "the contact form is down".
+
+It also fails on **zero** forms found. A check that silently passes on no input
+is worse than no check.
+
+It caught a real one immediately: `hasForm` was `'wpcf7-form' in content`, so
+`/residential/` — the one page whose only form is Nicepage's — would have shipped
+with no widget and no script, and rejected every submission it received.
+
+```
+FORM PROTECTION CHECK
+
+  pages with a form .................. 15
+  forms in total ..................... 15
+  fully protected .................... 15
+  incomplete ......................... 0
+
+FORM PROTECTION CHECK PASSED.
+```
+
+With `PUBLIC_TURNSTILE_SITEKEY` unset it fails all 15 and names the missing
+piece, which is the intended behaviour: a build with no sitekey must not produce
+a deployable site.
+
+#### Proof
+
+`npm run test:forms` starts `wrangler dev` on the built output, runs every case
+against the real Workers runtime, and reads the Worker's own log back — so
+"sends exactly once" is checked against what the Worker *did*, not what it said.
+Turnstile is exercised with Cloudflare's published test keys, so siteverify is
+called for real:
+
+```
+PASS  GET is refused                                405, Allow: POST
+PASS  no token rejected (cf7)                       403 · nothing sent
+PASS  no token rejected (nicepage)                  403 · nothing sent
+PASS  honeypot: looks accepted, sends nothing       200 "sent" · sends 0/0
+PASS  submitted in under 3s rejected                400
+PASS  missing dwell stamp rejected                  400
+PASS  one-character name rejected                   400
+PASS  placeholder name rejected                     400
+PASS  email domain with no mail route rejected      400
+PASS  domain with a mail route accepted             200   (cloudflare.com: A, no MX)
+PASS  valid cf7 submission sends exactly once       200 · id … · sends: 1
+PASS  valid nicepage submission sends exactly once  200 · id … · sends: 1
+PASS  rate limit stops the 4th in an hour           codes: 200 200 200 429 429
+PASS  every rejection reason appears in the log     7/7
+PASS  rejection log carries form, reason, ip, page  10 rejection line(s)
+PASS  valid token refused when siteverify says no   403 · nothing sent
+
+RESULT: PASS — 16 of 16
+```
+
+The last one restarts the Worker against Cloudflare's **always-fails** secret and
+replays a fully valid submission. It is the case that proves the verdict comes
+from siteverify rather than from the presence of a string.
+
+> **Two traps this harness hit, recorded because they both looked like bugs in
+> the code under test.**
+>
+> The suite shared one client IP across cases, and the hourly limit counts every
+> submission that reaches it — not just the ones that send. By the time the
+> "valid submission" case ran, that IP was out of budget and the test reported a
+> 429. Each case now gets its own IP; the rate-limit case keeps a fixed one,
+> because repeat submissions from one address is the point there.
+>
+> `wrangler dev --var` does **not** override `.dev.vars`, so phase 2 silently ran
+> against the always-*passes* secret and reported a pass that proved nothing. And
+> killing `npx` leaves `workerd` holding the port: the next run's server dies
+> quietly, the stale one answers every request, and every log-based assertion
+> reads zero while the HTTP ones still pass. The harness now writes `.dev.vars`
+> for phase 2 and kills the whole process group.
+
+#### It changes nothing visible
+
+The widget mount, the honeypot wrapper and the dwell field are injected by the
+port pipeline, so the comparison reference carries them too; the guard script and
+the sitekey meta are the port's alone.
+
+```
+render parity ......... 18/18
+pixel diff ............ 18/18   full-page, byte-identical at 1440px
+behaviour ............. 20/20
+```
+
+The verify harness serves an **empty stub** for `challenges.cloudflare.com`
+rather than aborting the request. Aborting makes it a *failed* request, which the
+render comparison counts — it reported all 15 form pages as DIFF on nothing but
+that, while geometry, element counts and text were identical.
+
 ### The API key is a Worker secret
 
 Not a build variable. A build variable is visible while the build runs and
@@ -514,28 +749,12 @@ from for this adapter's output.
 
 ### Abuse protection
 
-A form with no limit becomes a spam relay. Two layers, neither of which changes
-the page:
-
-**A honeypot** — a hidden text input named `your-website` on both forms. A
-person never sees it and never fills it; a bot that fills every field it finds
-does. A submission carrying it is answered as *sent* and never sent, because
-telling a spammer which check caught them is how they tune past it.
-
-**A rate limit** — 5 submissions per 60 seconds per IP, keyed on
-`CF-Connecting-IP`, which the edge sets and a caller cannot forge. It is the
-Workers rate-limiting binding declared in `wrangler.jsonc`, not a Cloudflare
-rate-limiting rule and not Turnstile:
-
-- a zone rate-limiting rule needs a permission this session's API token does not
-  carry (`request is not authorized`, on a Free zone)
-- Turnstile would put a visible widget into a page this port is pixel-matched
-  against
-
-The binding needs neither, lives in the repo where whoever reads the config can
-see it, and applies on every hostname the Worker answers on. It is checked after
-validation and the honeypot — so a bot spends its budget without ever reaching
-Resend — and before the send, so a burst cannot run up the client's bill.
+Superseded — see [Bot protection](#bot-protection--four-layers-all-server-side)
+above. Gate 11 shipped a honeypot and a 5-per-minute rate limit and deferred
+Turnstile on the grounds that it "would put a visible widget into a page this
+port is pixel-matched against". That reasoning was wrong: rendered with
+`appearance: 'interaction-only'` the widget shows nothing and the port is still
+18/18 pixel-identical.
 
 ### Proven, against the real Workers runtime
 
@@ -739,7 +958,8 @@ is itself the dropdown parent.
 ## Verification
 
 ```bash
-npm run build                 # runs the AD-9 image check; a violation fails the build
+npm run build                 # runs the AD-9 image and form-protection checks
+npm run test:forms            # the four bot-protection layers, vs the real runtime
 npm run verify:image-urls     # every image address in dist/, fetched from img.
 npm run verify:no-old-host    # nothing in dist/ points at the WordPress server
 npm run verify:header         # header transform, byte-exact

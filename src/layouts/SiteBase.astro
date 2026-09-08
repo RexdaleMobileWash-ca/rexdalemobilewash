@@ -53,6 +53,12 @@ const {
 // other and lives at img. under AD-9 — not a UI chrome asset that belongs in public/.
 const FAVICON = `https://${imageHosts.canonical}/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp`;
 const GTM_ID = 'GTM-NMTLRJ63';
+
+// Read at build time, which is correct for a public value: every page here is a
+// prerendered file, so there is no request-time opportunity to inject it. The
+// SECRET half of the pair (TURNSTILE_SECRET) is the opposite — a Worker secret,
+// read at runtime in the API route, never a build variable.
+const TURNSTILE_SITEKEY = import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '';
 ---
 
 <!doctype html>
@@ -72,6 +78,16 @@ const GTM_ID = 'GTM-NMTLRJ63';
     <link rel="icon" href={FAVICON} sizes="32x32" />
     <link rel="icon" href={FAVICON} sizes="192x192" />
     <link rel="apple-touch-icon" href={FAVICON} />
+
+    {/* Public by design — a Turnstile sitekey is meant to be readable in the
+        page — but not committed: it comes from a build variable so staging and
+        production can carry different widgets. bin/check-forms.mjs fails the
+        build if a page has a form and this is missing, which is the only reason
+        a form could ever ship unprotected. */}
+    {hasForm && TURNSTILE_SITEKEY && (
+      <meta name="turnstile-sitekey" content={TURNSTILE_SITEKEY} />
+    )}
+    {hasForm && <link rel="preconnect" href="https://challenges.cloudflare.com" />}
 
     <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin />
 
@@ -142,13 +158,11 @@ const GTM_ID = 'GTM-NMTLRJ63';
     {needsNicepage && <script is:inline src="/js/nicepage.js" />}
     {chrome === 'none' && <script is:inline src="/js/hello-frontend.min.js" />}
 
-    {/* Contact Form 7's own script is not shipped — it needs the WordPress AJAX
-        endpoint. This posts the form to /api/contact and sets the same classes
-        CF7 sets, so the site's vendored CF7 stylesheet paints the states. It is
-        an enhancement, not a dependency: with it blocked the form still submits
-        natively to the same endpoint. Only on the 14 routes that have a form.
-        The Nicepage form on /residential/ needs nothing extra — nicepage.js
-        already posts to whatever the form's action says. */}
-    {hasForm && <script is:inline src="/js/contact-form.js" />}
+    {/* Arms every form on the page: Turnstile, the dwell-time stamp, and the
+        CF7 submit handler (CF7's own script needs the WordPress AJAX endpoint
+        and is not shipped). None of it is a security control — the Worker
+        re-decides every check and trusts none of this. Emitted on the 15 form
+        pages only. */}
+    {hasForm && <script is:inline src="/js/form-guard.js" />}
   </body>
 </html>
