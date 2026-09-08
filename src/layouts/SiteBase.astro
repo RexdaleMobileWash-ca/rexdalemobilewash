@@ -96,6 +96,8 @@ const TURNSTILE_SITEKEY = import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '';
     {fonts.map((href) => <link rel="stylesheet" href={href} media="all" />)}
     {/* this page's own generated CSS, loaded last as it was inline last */}
     <link rel="stylesheet" href={`/css/page-${slug}.css`} />
+    {/* phone-only corrections to the generated CSS above; see the file header */}
+    <link rel="stylesheet" href="/css/mobile-fixes.css" />
 
     {jsonld && <script type="application/ld+json" set:html={jsonld} />}
 
