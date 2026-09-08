@@ -541,9 +541,43 @@ no `Origin` header outright. Browsers always send one on a POST, so it costs
 nothing and adds a layer — but it means a `curl` test without `-H Origin:` gets
 a 403 that looks like a broken route.
 
+And on the deployed Worker at `staging.rexdalemobilewash.ca`:
+
+```
+GET  /api/contact/            405 + Allow: POST
+POST invalid                  422 {"invalid":["your-name","your-subject","your-email"]}
+POST valid                    500 {"status":"failed"}   RESEND_API_KEY missing at runtime
+honeypot                      200 {"status":"sent"}     and nothing sent
+form action, /contact-us/     /api/contact/  (was /contact-us/#wpcf7-f372-p195-o1)
+form action, /residential/    /api/contact/  (was #)
+honeypot + script on the page yes
+```
+
+That 500 is the route's own diagnostic, not a crash: it is the branch that fires
+when the secret is absent, and it logs *"RESEND\_API\_KEY missing at runtime — is
+it a Worker secret rather than a build variable?"*.
+
 **Not yet proven, because it needs the key**: a real message arriving in the
 client's inbox, not in spam, and Resend reporting `last_event: delivered`. That
 is the rest of gate 11.
+
+### One more thing the deploy turned up: `session: false`
+
+`wrangler deploy` started failing on this gate with
+
+```
+The following bindings need to be provisioned:  env.SESSION  KV Namespace
+A request to /accounts/…/storage/kv/namespaces failed. Authentication error [code: 10000]
+```
+
+`@astrojs/cloudflare` declares a `SESSION` KV binding with no namespace id
+whenever Astro sessions are left at their default, and `wrangler deploy` then
+tries to create the namespace. Reading the deployed Worker's own settings shows
+`"bindings": []` — it never had one, and nothing on this site stores a session:
+every page is a prerendered file and `/api/contact/` reads a request and sends
+an email. So `astro.config.mjs` sets `session: false`, which is both what the
+site actually needs and one fewer billable resource on the client's account.
+Bindings after the deploy are `IMAGES`, `CONTACT_RATE_LIMIT` and `ASSETS`.
 
 ### The client's own mail, re-checked
 
