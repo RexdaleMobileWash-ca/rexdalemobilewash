@@ -27,6 +27,22 @@ Tags the port drops on purpose are skipped: the WordPress discovery links
 `generator` fingerprints, the reCAPTCHA dns-prefetch, the intl-tel-input meta,
 elementor global.css (404 on the live site), and the stylesheet links, whose
 per-page set the port prunes. See "Deliberate differences" in README.md.
+
+The port also ADDS metadata the live site does not have (see "SEO: what the port
+adds" in README.md), so the diff is asymmetric on purpose:
+
+  * a tag on the LIVE side and not on the port side is always a failure — that
+    is a regression, and catching it is the whole reason this tool exists;
+  * a tag on the PORT side and not on the live side is a failure UNLESS it is
+    one of the listed additions in ADDED, or a description on one of the four
+    pages listed in DESC_OVERRIDDEN.
+
+One more asymmetry: every live page emits two competing sets of Open Graph
+tags, Nicepage's then Yoast's, so `og:title` and `og:description` each appear
+twice with different values. src/seo.config.ts keeps the last. Both sides are
+collapsed by the same rule before the diff, so what is compared is the value a
+crawler would actually use — which is exactly the value that changed, and the
+reason it was worth changing.
 """
 import os as _os
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
@@ -45,6 +61,44 @@ ROUTES = ['/', '/what-we-do/', '/who-we-service/', '/buildings/', '/de-icing-ser
           '/heavy-equipment-washing/', '/parking-underground/', '/storefronts-3/',
           '/water-tanker-service/', '/about-us/', '/contact-us/', '/residential/',
           '/lookbook/', '/blog-post-title/', '/author/admin/']
+
+# Metadata the port adds that the live site has no equivalent for. Allowed on
+# the port side only; anything else port-only is still reported.
+#
+#   og:image*                the share card — 17 of the live site's 19 pages
+#                            have none (README, "SEO: what the port adds")
+#   fonts.googleapis.com     the preconnect the live site omits, same section
+#   turnstile-sitekey,       gate 11's bot protection, which has no live
+#   challenges.cloudflare…   equivalent because the live forms have none
+#                            (README, "Bot protection — four layers")
+#
+# NB re.X strips literal spaces from the pattern, so every gap between
+# attributes has to be written \s+.
+ADDED = re.compile(r'''property=["']og:image(:width|:height|:alt)?["']
+    |rel=["']preconnect["']\s+href=["']https://fonts\.googleapis\.com["']
+    |name=["']turnstile-sitekey["']
+    |rel=["']preconnect["']\s+href=["']https://challenges\.cloudflare\.com["']''', re.X)
+
+# The one tag the port drops that is not in SKIP: deliberate difference 12.
+# Yoast points /author/admin/'s og:image at secure.gravatar.com — the single
+# image address on the site that is not the client's, which the AD-9 check
+# refuses. The port serves the logo Yoast itself names as the organisation's
+# logo in the JSON-LD on that same page.
+DROPPED = re.compile(
+    r'''property=["']og:image["']\s+content=["']https://secure\.gravatar\.com''', re.X)
+
+# The four pages whose meta description the port rewrites, and why. Every other
+# page keeps Yoast's description exactly. See DESCRIPTIONS in src/seo.config.ts.
+DESC_OVERRIDDEN = {
+    '/water-tanker-service/',   # live carries /de-icing-service/'s, word for word
+    '/lookbook/',               # live has none
+    '/blog-post-title/',        # live has none
+    '/author/admin/',           # live has none
+}
+
+# Open Graph properties that may hold only one value, so a second is a bug.
+SINGLE_OG = ('og:title', 'og:description', 'og:url', 'og:type', 'og:site_name',
+             'og:locale')
 
 SKIP = re.compile(r'''rel=['"]?(alternate|shortlink|EditURI|https://api\.w\.org/|pingback|dns-prefetch)
     |name=['"]generator
@@ -97,6 +151,30 @@ def tags(doc):
     ti = re.search(r'<title>(.*?)</title>', head, re.S)
     if ti:
         out.append('<title>' + norm(ti.group(1)) + '</title>')
+    return collapse_og(out)
+
+
+def collapse_og(tags):
+    """Keep the last value of each single-value og: property, in first position.
+
+    The same rule src/seo.config.ts applies to the port, applied to both sides
+    so the comparison is about the value a crawler ends up with rather than
+    about how many times WordPress wrote one.
+    """
+    last, out, seen = {}, [], set()
+    for t in tags:
+        p = re.search(r'property="(og:[a-z_]+)"', t)
+        if p and p.group(1) in SINGLE_OG:
+            last[p.group(1)] = t
+    for t in tags:
+        p = re.search(r'property="(og:[a-z_]+)"', t)
+        if not p or p.group(1) not in SINGLE_OG:
+            out.append(t)
+            continue
+        if p.group(1) in seen:
+            continue
+        seen.add(p.group(1))
+        out.append(last[p.group(1)])
     return out
 
 
@@ -110,8 +188,11 @@ def main():
             bad += 1
             print(f'  FAIL  {r:<28} {"live" if L is None else "port"} returned no <head>')
             continue
-        only_live = [t for t in L if t not in S]
-        only_port = [t for t in S if t not in L]
+        is_desc = lambda t: t.startswith('<meta name="description"')
+        drop = (lambda t: is_desc(t)) if r in DESC_OVERRIDDEN else (lambda t: False)
+
+        only_live = [t for t in L if t not in S and not drop(t) and not DROPPED.search(t)]
+        only_port = [t for t in S if t not in L and not ADDED.search(t) and not drop(t)]
         if only_live or only_port:
             bad += 1
             print(f'  DIFF  {r}')

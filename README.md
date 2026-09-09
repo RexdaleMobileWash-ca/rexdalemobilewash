@@ -884,6 +884,146 @@ Note what they do *not* touch: the apex SPF still reads
 That separation is why this form cannot affect the client's real mail flow even
 though it sends as their domain.
 
+## SEO
+
+Two separate jobs, in this order: **keep everything the live site ranks on**, then
+add what it never had. The first is not a claim, it is a measurement —
+`npm run verify:head` fetches all 18 live pages and diffs the `<head>` tag for
+tag against the built output:
+
+```
+head parity ........... 18/18   every title, description, canonical, robots
+                                directive, Open Graph tag, twitter:* tag and
+                                Yoast JSON-LD node the live site emits still
+                                arrives, once the deliberate differences below
+                                are accounted for
+```
+
+Nothing was retyped or rewritten to get there. The metadata is the live site's
+own, carried by `tools/gen_pages.py` into the generated page files, exactly as
+the markup is.
+
+### What the port adds
+
+All of it lives in **`src/seo.config.ts`**, is applied by `SiteBase.astro` on top
+of the ported props, and is a pure function of them — so it cannot drift from
+what the pages actually say, and a regeneration cannot lose it. Every value is
+taken from the client's own pages or measured from the media already in the
+bucket. Nothing is invented: there is no `geo`, because no verified coordinates
+exist for the address, and no `openingHours`, because the site does not publish
+any.
+
+**1. The organisation is now a local business.** The live site's JSON-LD declares
+a bare `Organization`: name, URL, logo, three social profiles. No address, no
+phone, no service area — for a trade business that has worked out of one
+Etobicoke address since 1966 and sells to one metro area. The `Organization`
+node now also types as `ProfessionalService` (a `LocalBusiness` subtype) and
+carries the address, phone, email, founding year and service area printed in the
+site's own footer and contact block. This is the largest single gap in the live
+site's structured data.
+
+**2. Service pages say what they sell.** The ten service pages gain a `Service`
+node — name, `serviceType`, the page's own description, its hero image, the
+organisation as `provider`, and the GTA as `areaServed`.
+
+**3. The share card works.** 17 of the live site's 19 pages ship **no
+`og:image` at all**, so every link to them posted to Facebook, LinkedIn, Slack
+or iMessage renders as a grey box. Each page now carries its own hero image with
+real dimensions and alt text — dimensions read from the file in the bucket, not
+from the markup, because the markup's `width`/`height` are the rendered size and
+not what a crawler needs. The two pages that already had an `og:image` keep
+Yoast's URL untouched and gain only the dimensions it omits. Every URL is on the
+image host, so `bin/check-images.mjs` polices them under AD-9 like any other
+image.
+
+**4. The duplicate Open Graph tags are resolved.** Every live page emits **two**
+competing sets of OG tags — Nicepage writes its own from the page body, then
+Yoast writes the real ones — so `og:title` and `og:description` each appear
+twice with different values, and consumers take the **first**, which is
+Nicepage's. On the home page that first `og:description` is 1,100 characters of
+carousel text scraped out of the DOM, whitespace and all:
+
+```
+"BULK WATER DELIVERY learn more FLEET WASHING learn more HEAVY
+ EQUIPMENT learn more … Previous Next WELCOME TO REXDALE MOBILE WASH …"
+```
+
+and on `/author/admin/` the first `og:url` is `/author/admin?author_name=admin`,
+a query-string form the page's own canonical contradicts. For the properties
+that may hold only one value, the port keeps the **last** — Yoast's, the one
+somebody authored. Nothing is lost: where Yoast wrote no value, the surviving
+one is Nicepage's, which is what a crawler would have used anyway.
+
+**5. Four descriptions, and only four.** Every other page keeps Yoast's wording
+exactly.
+
+| page | why |
+|---|---|
+| `/water-tanker-service/` | live carries `/de-icing-service/`'s description **word for word** — a Yoast copy-paste that leaves two pages competing on one snippet while saying nothing about bulk water |
+| `/lookbook/` | no description live |
+| `/blog-post-title/` | no description live |
+| `/author/admin/` | no description live |
+
+**6. `robots.txt` names the sitemap.** It did not, so the crawl entry point was
+discoverable only from Search Console. The two WordPress lines above it are
+carried over verbatim and still name `/wp-admin/`; harmless, and left alone.
+
+**7. `preconnect` to `fonts.googleapis.com`.** The live site preconnects to
+`fonts.gstatic.com`, where the font *files* live, but not to the host serving the
+stylesheet that names them — which is fetched first. Every page loads between
+one and four sheets from it in the critical path.
+
+**8. `ContactPage` / `AboutPage` / `CollectionPage`** on the three pages that
+obviously are one.
+
+### `bin/check-seo.mjs`
+
+Runs inside `npm run build`, joined with `&&`, so it runs in Workers Builds on
+every deploy and a violation fails the deploy rather than reaching anyone. It
+exists for the same reason the image and form checks do: a page that loses its
+canonical, its description or its share image does not *look* broken — it looks
+exactly right, in the browser and in the pixel diff, and the damage surfaces
+weeks later in somebody else's Search Console. The whole point of moving off
+Yoast is that the metadata is generated by code now, and code that generates
+metadata needs something that reads it back.
+
+Per page: exactly one non-empty `<title>`; a description (a failure on an
+indexable page, a warning on a `noindex` one); exactly one canonical, on-site;
+**no duplicated single-value `og:` property** — the regression guard for point 4,
+which would otherwise fail silently and invisibly; an `og:image`; JSON-LD that
+parses, whose `Organization` carries the address, phone and service area from
+point 1. Across the site: `robots.txt` names a sitemap; every `<loc>` in every
+sitemap resolves to a page this site actually builds, and no page is `noindex`
+while sitting in one; and no two pages share a description.
+
+Current state — 19 pages, 0 failures, 2 warnings:
+
+```
+/buildings/     description is 196 chars (>160, will be truncated)
+/contact-us/    description is 208 chars (>160, will be truncated)
+```
+
+Both are the client's own copy. Left alone deliberately: rewriting the wording
+on a ranking page is the client's call, not the migration's, and the check
+surfaces it as a warning rather than deciding it.
+
+### Three things left for the client to decide
+
+Flagged, not acted on — each changes what the site says or what it indexes, which
+is past where a migration should go on its own.
+
+1. **`/blog-post-title/` is WordPress placeholder copy** — "What goes into a
+   blog post? Helpful, industry-specific content that: 1) gives readers a useful
+   takeaway…" — and it is indexed and in `post-sitemap.xml`. Thin boilerplate is
+   a site-quality signal, not just a wasted page. Either write a real first post
+   or `noindex` it. The port describes it honestly and leaves it indexed.
+2. **`/author/admin/` is an author archive for one user called "admin"**, listing
+   that one placeholder post. Yoast's own default is to disable author archives
+   on single-author sites. Same options, same reason it was not decided here.
+3. **The `SearchAction` in the JSON-LD points at `/?s={search_term_string}`**, a
+   WordPress search this site does not have. Carried over untouched, as it was
+   before — see [Known issues carried over](#known-issues-carried-over-from-the-live-site).
+
 ## How the port is structured
 
 Everything under `src/html/`, `src/nav-active.json` and `public/css/page-*.css`
@@ -905,8 +1045,17 @@ public/_headers, public/_redirects             edge config, both generated
 image-hosts.json                               the image host, written once and read by
                                                the generator, the layout, the AD-9
                                                checker and two verify tools
+src/seo.config.ts                              everything the port ADDS to the live
+                                               site's SEO — hand-written, never generated
 bin/check-images.mjs                           AD-9 enforcement, inside `npm run build`
+bin/check-seo.mjs                              SEO enforcement, inside `npm run build`
 ```
+
+> **`src/seo.config.ts` is hand-written on purpose, and it is the only place the
+> new metadata may live.** `tools/gen_pages.py` OWNS all 19 `src/pages/*.astro`
+> files and rewrites them from the capture. Anything added there is lost the next
+> time somebody runs `npm run port`. `SiteBase.astro` applies the config on top of
+> the ported props at render time, so a regeneration cannot silently undo it.
 
 There is no `public/images/`. Every image is served from the bucket at
 `img.rexdalemobilewash.ca` (AD-9) — see [Images](#images).
@@ -958,7 +1107,7 @@ is itself the dropdown parent.
 ## Verification
 
 ```bash
-npm run build                 # runs the AD-9 image and form-protection checks
+npm run build                 # runs the AD-9 image, form-protection and SEO checks
 npm run test:forms            # the four bot-protection layers, vs the real runtime
 npm run verify:image-urls     # every image address in dist/, fetched from img.
 npm run verify:no-old-host    # nothing in dist/ points at the WordPress server
@@ -1104,11 +1253,15 @@ it was serving an older build than the repo.
 Measured against the **deployed** Worker, not a local build:
 
 ```
-head parity ........... 17/18   tag for tag, once the deliberate move of the
+head parity ........... 18/18   tag for tag, once the deliberate move of the
                                 media library to img. and entity/quote spelling
-                                are normalised. The one difference is
-                                /author/admin/'s og:image — deliberate
-                                difference 12.
+                                are normalised. Was 17/18: the one difference,
+                                /author/admin/'s og:image (deliberate difference
+                                12), is now listed in the tool as a known drop
+                                rather than reported on every run, alongside the
+                                gate 11 Turnstile tags and the additions in
+                                [SEO](#seo). A tag on the live side and missing
+                                from the port is still always a failure.
 render vs live ........ 17/19   exact document height on all 19 (the 18 routes
                                 plus the 404). The two flagged are / and
                                 /what-we-do/, on the deliberate differences
@@ -1301,7 +1454,8 @@ Thirteen, all forced, all verified:
     serving the generic mystery-person placeholder. The site logo is already in
     the bucket and Yoast itself names it as the organisation's logo in the
     JSON-LD on the same page. This is the single remaining difference in
-    `npm run verify:head`, which is otherwise 17/18 exact against the live site.
+    `npm run verify:head`, which is otherwise exact against the live site; the
+    tool now carries it as a listed known drop, so the run reads 18/18.
 
 13. **The contact forms post to `/api/contact/`, not to the page.** Both forms'
     `action` attributes are rewritten — CF7's from `/<page>/#wpcf7-f372-…` and
@@ -1325,9 +1479,14 @@ Faithfully reproduced, not introduced here:
   post?"). It is in the sitemap, so it is ported rather than dropped; gate 14 may
   prefer a redirect.
 - **The schema.org `SearchAction` points at `/?s={search_term_string}`**, a
-  WordPress search the new site does not have. Left in place — changing structured
-  data is the client's call.
+  WordPress search the new site does not have. Left in place — removing it is the
+  client's call. Everything the port *adds* to the structured data is additive
+  and listed under [SEO](#seo); nothing Yoast wrote was removed.
 - `robots.txt` is carried over verbatim and still names `/wp-admin/`. Harmless.
+  One line was appended: `Sitemap:`, which the live file omits.
+- **Two meta descriptions run past 160 characters** (`/buildings/` at 196,
+  `/contact-us/` at 208) and will be truncated in the results page. The client's
+  own copy; `bin/check-seo.mjs` warns rather than failing on them.
 
 ## Not done here
 

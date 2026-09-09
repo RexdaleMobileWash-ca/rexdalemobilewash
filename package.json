@@ -5,9 +5,10 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && node bin/check-images.mjs && node bin/check-forms.mjs",
+    "build": "astro build && node bin/check-images.mjs && node bin/check-forms.mjs && node bin/check-seo.mjs",
     "check:images": "node bin/check-images.mjs",
     "check:forms": "node bin/check-forms.mjs",
+    "check:seo": "node bin/check-seo.mjs",
     "test:forms": "node tools/verify/form-guard-test.mjs",
     "verify:image-urls": "python3 tools/verify/image-urls-live.py",
     "preview": "astro preview",
