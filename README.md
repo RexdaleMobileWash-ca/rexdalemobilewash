@@ -63,6 +63,30 @@ Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
 > **a push to `main` does not deploy**; deploy with `npm run build && npx
 > wrangler deploy` and re-run the checks against the deployed host.
 
+> **⚠ Staging is running Turnstile's ALWAYS-PASSES TEST KEYS, and must not go
+> to production that way.** The deploy on 2026-09-09 was the first to carry the
+> bot-protection commit, and no Turnstile widget exists on the account yet —
+> creating or reading one needs a permission this session's token does not have
+> (`/accounts/…/challenges/widgets` → 10000 Authentication error). The choice
+> was between shipping without a sitekey, which makes the Worker reject *every*
+> submission (`TURNSTILE_SECRET missing at runtime`), and shipping Cloudflare's
+> published test pair, which accepts any token from anyone:
+>
+> ```
+> build var       PUBLIC_TURNSTILE_SITEKEY  1x00000000000000000000AA
+> Worker secret   TURNSTILE_SECRET          1x0000000000000000000000000000000AA
+> ```
+>
+> Neither value is committed. The Turnstile layer is therefore **inert** — the
+> honeypot, the dwell-time stamp, the MX lookup and the 5-per-60s burst limiter
+> are all live, so staging is still better protected than the build it
+> replaced, which had none of them. To make it real: create the widget
+> (Managed; hostnames `rexdalemobilewash.ca`, `www.`, `staging.`, and the
+> `workers.dev` host), then
+> `PUBLIC_TURNSTILE_SITEKEY=<real> npm run build`,
+> `npx wrangler secret put TURNSTILE_SECRET`, and redeploy. **Do this before
+> gate 13.**
+
 ```
 worker .......................... rexdalemobilewash
 repo ............................ RexdaleMobileWash-ca/rexdalemobilewash @ main
