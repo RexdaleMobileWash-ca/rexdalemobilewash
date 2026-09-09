@@ -1,0 +1,202 @@
+/* mobile-fixes.css — phone/small-tablet corrections to the ported Nicepage CSS.
+ *
+ * The design was laid out on the desktop canvas and its breakpoints were
+ * generated from that: the small-screen rules carry pixel margins that were
+ * measured for a 1200px stage, so on a phone they push blocks on top of each
+ * other. It loads AFTER /css/page-<slug>.css so it wins on equal specificity,
+ * and every rule sits in a max-width query, so the desktop rendering the client
+ * signed off on is byte-for-byte untouched.
+ *
+ * What it corrects, on a 400px-wide phone unless a block says otherwise:
+ *   1. the "what we do" cards on the home page — the paragraph is pulled up
+ *      38px, so the graffiti card prints its text through its own title. That
+ *      one is wrong all the way up to 1200px, so it is fixed there too. On a
+ *      phone the cards are also centred and evenly spaced, and the duplicate
+ *      graffiti icon — two identical SVGs that overlap to the pixel on desktop —
+ *      is dropped rather than shown side by side.
+ *   2. content that hangs off the right edge below 340px of sheet width.
+ *   3. the header — the logo hangs 69px below a bar that itself starts 117px
+ *      down the page, so on every page the logo lands in the middle of the hero
+ *      and covers the page title. The bar goes to the top of the screen with
+ *      the logo and the hamburger on one row. This one runs to 991px rather
+ *      than 767px: the contact bar that top margin was clearing is hidden from
+ *      991px down, so a tablet was broken the same way a phone was.
+ *   4. the hero carousel — the slide boxes keep desktop margins (387-427px from
+ *      the top of a 209px-tall slide), so slide text lands below the bottom of
+ *      its own slide, and the 48-60px headings overflow a 340px box. Slides get
+ *      a real height and their content is centred in it.
+ */
+
+/* The graffiti card's paragraph is pulled up 38px below 1200px — a leftover of
+ * the wide layout where it sat beside the heading rather than under it — so it
+ * prints through its own title at every width from a phone to a small laptop.
+ * 11px is the margin the same paragraph carries above 1200px. Kept ahead of the
+ * phone rules below so those still win on a phone. */
+@media (max-width: 1199px) {
+  #sec-2847 p.u-text-8 {
+    margin-top: 11px;
+  }
+}
+
+/* Nicepage pins the content sheet to a flat 340px below 576px, so every screen
+ * narrower than 340 + margins — an iPhone SE and anything smaller — has its
+ * content hanging over the right edge. min() keeps the 340px on the phones
+ * that can take it and shrinks it on the ones that cannot. */
+@media (max-width: 575px) {
+  .u-sheet {
+    width: min(var(--theme-sheet-width-xs, 340px), calc(100% - 24px)) !important;
+  }
+  /* text blocks and embedded shortcodes carry that same 340px as a hard width,
+     and nicepage.js sizes layout columns off it too */
+  .u-sheet .u-text,
+  .u-sheet .u-shortcode,
+  .u-sheet .u-form,
+  .u-sheet .u-layout-col {
+    max-width: 100%;
+  }
+}
+
+/* -------------------------------------------------------------------- header
+ *
+ * 991px, not 767px: the black contact bar the blue bar's 117px top margin was
+ * clearing is hidden by u-hidden-md from 991px down, so a tablet gets the same
+ * bar floating over the hero with the logo hanging out of it — 768-991px was
+ * broken in exactly the way a phone was, just with more room to hide it.
+ *
+ * .u-header itself is position: absolute over the page (u-overlap), so its
+ * 305-335px min-height was covering a third of the hero and swallowing taps
+ * meant for it. */
+@media (max-width: 991px) {
+  .u-header {
+    min-height: 0;
+  }
+  .u-header .u-group-3 {
+    min-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .u-header .u-container-layout-3 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+  }
+  /* the logo is the anchor; the img inside it is pinned to 130px !important by
+     the site's own inline block, so both halves have to be restated here. */
+  .u-header .u-image-1 {
+    order: 0;
+    flex: 0 0 auto;
+    width: 96px !important;
+    height: 96px;
+    margin: 0;
+  }
+  .u-header .u-logo-image-1 {
+    width: 96px !important;
+    height: 96px;
+  }
+  .u-header .u-menu-1 {
+    order: 1;
+    width: auto;
+    margin: 0;
+  }
+  .u-header .u-hamburger-link-1 {
+    font-size: calc(1em + 16px);
+    padding: 8px 10px;
+  }
+}
+
+/* one size down on a phone, where 96px is a fifth of the screen */
+@media (max-width: 575px) {
+  .u-header .u-image-1,
+  .u-header .u-logo-image-1 {
+    width: 76px !important;
+    height: 76px;
+  }
+}
+
+@media (max-width: 767px) {
+
+  /* ------------------------------------------------------- hero carousel */
+  .u-carousel .u-carousel-item > .u-sheet {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    /* room for the header bar, which is absolutely positioned over the hero */
+    padding: 100px 0 44px;
+    min-height: 420px;
+    text-align: center;
+  }
+  /* nicepage pins every direct child of a sheet to align-self: flex-start */
+  .u-carousel .u-carousel-item > .u-sheet > * {
+    align-self: center;
+    width: 100%;
+  }
+  .u-carousel .u-carousel-item .u-group-1 {
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+  }
+  .u-carousel .u-carousel-item .u-container-layout-1 {
+    padding: 18px 14px !important;
+  }
+  .u-carousel .u-carousel-item h1 {
+    font-size: 1.75rem;
+    line-height: 1.2;
+    margin: 0 !important;
+  }
+  /* the slide headings carry per-word inline font sizes (60px, 3.75rem) */
+  .u-carousel .u-carousel-item h1 span {
+    font-size: inherit !important;
+  }
+  .u-carousel .u-carousel-item .u-btn-1 {
+    margin: 18px auto 0 !important;
+  }
+  /* a slide caption sits directly in the sheet on the inner pages, and on the
+     home page's first slide it is an empty <p> whose 326px top margin was what
+     set the height of the whole carousel. */
+  .u-carousel .u-carousel-item > .u-sheet > .u-text {
+    margin: 0 !important;
+  }
+  /* prev/next sit 231.5px off the bottom, which was mid-slide at desktop
+     height and near the top edge at mobile height. */
+  .u-block-914c-5,
+  .u-block-914c-6 {
+    width: 48px;
+    height: 48px;
+    bottom: calc(50% - 24px);
+  }
+
+  /* --------------------------------------------------- "what we do" cards */
+  #sec-2847 .u-layout-cell {
+    min-height: 0;
+  }
+  #sec-2847 .u-container-layout {
+    padding: 24px 16px;
+    text-align: center;
+  }
+  #sec-2847 .u-icon {
+    float: none;
+    margin: 0 auto 16px;
+  }
+  /* the graffiti card holds the same icon twice, stacked to the pixel on
+     desktop and side by side once the card is full width. */
+  #sec-2847 .u-icon-8 {
+    display: none;
+  }
+  /* the per-element rules are .u-section-5 .u-text-N — two classes — so the
+     element name is what carries these past them. #sec-2847 is this section
+     on the home page; .u-section-5 is a different section on every other. */
+  #sec-2847 h4.u-text {
+    font-size: 1.25rem;
+    margin: 0 0 12px;
+  }
+  #sec-2847 p.u-text {
+    margin: 0 0 20px;
+  }
+  #sec-2847 .u-btn {
+    display: inline-block;
+    float: none;
+    margin: 0 auto;
+  }
+}
