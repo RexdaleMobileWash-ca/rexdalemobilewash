@@ -51,15 +51,19 @@
   // 60 seconds — so the hourly budget is a KV counter and the binding stays as
   // the burst brake.
   //
-  // THIS NAMESPACE MUST BE CREATED BEFORE DEPLOY:
+  // THE NAMESPACE DOES NOT EXIST YET, so there is no binding here:
   //     npx wrangler kv namespace create FORM_RATE_LIMIT
-  // then paste the id it prints over the placeholder below. Until it exists the
-  // route logs "no KV binding for the hourly rate limit" on every submission and
-  // runs on the burst limiter alone — degraded, and saying so, rather than
-  // pretending the limit is there.
-  "kv_namespaces": [
-    { "binding": "FORM_RATE_LIMIT", "id": "REPLACE_WITH_NAMESPACE_ID" }
-  ],
+  // then add it back as
+  //     "kv_namespaces": [{ "binding": "FORM_RATE_LIMIT", "id": "<the id>" }]
+  //
+  // It was a placeholder id ("REPLACE_WITH_NAMESPACE_ID") until the deploy on
+  // 2026-09-09, which is worse than no binding at all: the Worker would carry a
+  // binding pointing at nothing, and every submission would spend a failing
+  // round trip on it. Absent, the route logs "no KV binding for the hourly rate
+  // limit" once per submission and runs on the burst limiter alone — degraded,
+  // and saying so, rather than pretending the limit is there. Creating the
+  // namespace needs a KV permission this session's token does not carry
+  // (/accounts/…/storage/kv/namespaces → 10000 Authentication error).
   "ratelimits": [
     {
       "name": "CONTACT_RATE_LIMIT",
