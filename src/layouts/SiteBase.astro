@@ -6,6 +6,9 @@
 // order. The per-page sheet (/css/page-<slug>.css) holds the inline <style>
 // blocks the live page carried — its section rules, theme kit, header and footer
 // — hoisted out of the HTML in document order and loaded last, exactly as before.
+// One sheet follows it, /css/site-fixes.css: the port's own corrections, which
+// have to win over everything the live site shipped. It is the only stylesheet
+// here that is not the live site's.
 //
 // Deliberately NOT carried over from the live site:
 //   * elementor/css/global.css   — returns 404 live, so it styles nothing today
@@ -96,6 +99,8 @@ const TURNSTILE_SITEKEY = import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '';
     {fonts.map((href) => <link rel="stylesheet" href={href} media="all" />)}
     {/* this page's own generated CSS, loaded last as it was inline last */}
     <link rel="stylesheet" href={`/css/page-${slug}.css`} />
+    {/* the port's own corrections, after everything the live site shipped */}
+    <link rel="stylesheet" href="/css/site-fixes.css" />
 
     {jsonld && <script type="application/ld+json" set:html={jsonld} />}
 

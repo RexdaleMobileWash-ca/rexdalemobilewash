@@ -1,0 +1,130 @@
+/* site-fixes.css — the port's own corrections, loaded last so they win.
+ *
+ * Everything else under /css is the live site's CSS carried over verbatim, and
+ * stays that way: this is the one file that deliberately departs from it. Each
+ * block says what was wrong on the live site and what it does instead.
+ * See README, "Deliberate differences".
+ *
+ * Nicepage numbers classes per page: `.u-section-5 .u-text-8` is a different
+ * element on every route that has a fifth section. Anything below the header
+ * is therefore addressed by the section's own id — `#sec-2847` is the home
+ * page's services row and exists on no other page — never by `.u-section-N`.
+ * The header is the one piece of markup every page shares, so its classes do
+ * mean the same element everywhere.
+ */
+
+/* ---------------------------------------------------------------------------
+ * 1. The header on tablets and phones (<= 991px, where the black contact bar
+ *    is hidden by u-hidden-md/sm/xs).
+ *
+ *    The generated header positions the logo for the WORDMARK it was built
+ *    with — 325x75, sitting bottom-aligned in the blue bar on a negative
+ *    margin. The client later swapped in the round logo with a hand-written
+ *    override at the top of every page sheet:
+ *
+ *        .u-header .u-image-1     { width: auto !important; border-radius: 50% }
+ *        .u-header .u-logo-image-1{ width: 130px !important }
+ *
+ *    and nothing downstream was re-tuned. A 130px circle in a bar with a 99px
+ *    min-height, on margin-top: -69px, hangs out of both ends of the bar; the
+ *    bar itself still carries the 117px top margin that used to clear the
+ *    contact bar, so on a phone the whole thing floats a third of the way down
+ *    the hero. On /about-us/ the logo lands squarely on top of the page title.
+ *
+ *    The bar goes back to the top of the page and becomes one flex row: logo
+ *    left, hamburger right, both centred on the same line. `order` puts the
+ *    logo first — in the markup the nav comes before it.
+ * ------------------------------------------------------------------------ */
+@media (max-width: 991px) {
+  .u-header {
+    /* the box is position:absolute over the page (u-overlap); at 305-335px it
+       covered a third of the hero and swallowed taps meant for it */
+    min-height: 0;
+  }
+  .u-header .u-group-3 {
+    min-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .u-header .u-container-layout-3 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 8px 10px 16px;
+  }
+  .u-header .u-image-1 {
+    order: -1;
+    flex: 0 0 auto;
+    height: auto;
+    margin: 0;
+  }
+  .u-header .u-logo-image-1 {
+    width: 96px !important;
+    height: 96px;
+  }
+  .u-header .u-menu-1 {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+  }
+  .u-header .u-hamburger-link-1 {
+    padding: 10px 14px;
+  }
+}
+
+@media (max-width: 575px) {
+  .u-header .u-logo-image-1 {
+    width: 76px !important;
+    height: 76px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. The GRAFFITI REMOVAL card on the home page.
+ *
+ *    Its paragraph carries margin-top: -38px below 1200px, which prints the
+ *    copy straight through the heading on every phone and tablet. The heading
+ *    is also the only one of the five cards with no font-size, so it renders
+ *    at 1.5rem against its neighbours' 1.25rem. And its icon is drawn twice,
+ *    the second copy placed 59px from the cell's left edge while the first
+ *    centres itself: in a wide cell that is the tight overlapping pair the
+ *    design intends, but in a phone-width cell the two drift 67px apart and
+ *    sit left of centre. The second copy is centred here too, then nudged the
+ *    same 13px the desktop layout gives it.
+ *
+ *    Everything here stops at 1199px; the desktop layout is left alone.
+ * ------------------------------------------------------------------------ */
+@media (max-width: 1199px) {
+  #sec-2847 .u-text-7 {
+    font-size: 1.25rem;
+  }
+  #sec-2847 .u-text-8 {
+    margin-top: 20px;
+  }
+  #sec-2847 .u-icon-8 {
+    margin-left: auto;
+    transform: translateX(13px);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. The two odd cards in that row, once the five stack into one column.
+ *
+ *    Three of the five cells carry u-align-center; FLEET WASHING and BULK
+ *    WATER DELIVERY do not, and their own u-align-center-lg/md/xl stops short
+ *    of the phone breakpoints — so those two cards read left-aligned in a
+ *    column of centred ones. Their Read More links miss the centre as well:
+ *    FLEET WASHING pins its own right (margin-left: auto), BULK WATER
+ *    DELIVERY left (margin-left: 0 below 768px).
+ * ------------------------------------------------------------------------ */
+@media (max-width: 767px) {
+  #sec-2847 .u-layout-cell-1,
+  #sec-2847 .u-layout-cell-5 {
+    text-align: center;
+  }
+  #sec-2847 .u-btn-1,
+  #sec-2847 .u-btn-5 {
+    margin-left: auto;
+    margin-right: auto;
+  }
+}

@@ -15,7 +15,7 @@ it is listed under [Deliberate differences](#deliberate-differences) below.
 | Pages | 18 routes + a ported 404 |
 | Source design | Nicepage 8.6.2 (15 pages) and the hello-elementor theme (3 pages + 404) |
 | Images | none in the repo — every one comes from `img.rexdalemobilewash.ca` (AD-9) |
-| CSS | the live site's own sheets, vendored, in the live load order, pruned per page |
+| CSS | the live site's own sheets, vendored, in the live load order, pruned per page, plus `site-fixes.css` ([difference 14](#deliberate-differences)) |
 | JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel, lightbox and parallax need them) |
 | Forms | 15 forms, 2 kinds, both -> `/api/contact/` -> Resend, behind four bot-protection layers |
 | Analytics | the same GTM container, `GTM-NMTLRJ63`, with gtm4wp's `dataLayer` push |
@@ -1070,6 +1070,14 @@ old-server references . 0
 Re-run at another width with `VERIFY_WIDTH=390 node tools/verify/compare-render.cjs`
 then `PIX_TAG=.390 python3 tools/verify/pixel-diff.py`.
 
+> **The narrow-width runs are expected to differ from here on.** Difference 14
+> corrects the mobile header on all 18 pages and the home page's services row,
+> so at 390px the comparison is now measuring the port against the live site's
+> *broken* layout and will report DIFF there — that is the change, not a
+> regression. The 1440px runs are untouched: every rule in
+> `public/css/site-fixes.css` sits inside a `max-width` query, and the header
+> and card geometry at 1200px and 1440px is unchanged to the pixel.
+
 ### Against the live site
 
 > **What the capture comparison cannot see.** The reference is the captured
@@ -1144,7 +1152,8 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Thirteen, all forced, all verified:
+Fourteen, all verified. Thirteen were forced; the fourteenth is the one place
+the port is asked to look *different* on purpose.
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -1313,6 +1322,45 @@ Thirteen, all forced, all verified:
     and for the two places this deliberately departs from gate 11 — sending as
     the client's own domain, and putting the lead rather than the client in
     `Reply-To`.
+
+14. **The mobile header and the home page's services row are corrected**, in
+    `public/css/site-fixes.css` — the only stylesheet here that is not the live
+    site's. It loads after the per-page sheet on every page, and every rule in
+    it is inside a `max-width` query, so the desktop layout (>= 1200px) is
+    byte-for-byte what it was. Three things:
+
+    - **The header below 992px.** The generated header places the logo for the
+      325x75 **wordmark** it was designed with: bottom-aligned inside the blue
+      bar on `margin-top: -69px`, with the bar itself pushed 117px down the
+      page to clear the black contact bar. The client later swapped in the
+      round logo by hand, at the top of every page sheet
+      (`.u-logo-image-1 { width: 130px !important }`), and nothing downstream
+      was re-tuned — so on a phone a 130px circle hangs out of both ends of a
+      99px bar that floats a third of the way down the hero, and the contact
+      bar it was clearing is hidden at that width anyway. On `/about-us/` the
+      logo lands on top of the page title. The bar now sits at the top of the
+      page as one flex row: logo left, hamburger right, both centred on it
+      (96px logo to 991px, 76px to 575px). `.u-header`'s 305-335px
+      `min-height` goes with it — the box is `position: absolute` over the
+      page, so it was covering a third of the hero and swallowing taps.
+    - **The GRAFFITI REMOVAL card.** Its paragraph carries
+      `margin-top: -38px` below 1200px, which prints the copy straight through
+      the heading on every phone and tablet. The heading is also the only one
+      of the five with no `font-size` (1.5rem against its neighbours'
+      1.25rem), and its icon — drawn twice, the second copy pinned 59px from
+      the cell's left edge — splits into a pair 67px apart, left of centre,
+      once the cell is phone-width.
+    - **The FLEET WASHING and BULK WATER DELIVERY cards** read left-aligned in
+      a stack of centred ones below 768px: those two cells are the two without
+      `u-align-center`, and their own `u-align-center-lg/md/xl` stops short of
+      the phone breakpoints. Their Read More links miss the centre too, one
+      pinned right and one left.
+
+    Nicepage numbers its classes per page — `.u-section-5 .u-text-8` is a
+    different element on every route that has a fifth section — so everything
+    below the header is addressed by the section's own id (`#sec-2847`, the
+    home page's services row). The header is the one piece of markup every
+    page shares.
 
 ## Known issues carried over from the live site
 
