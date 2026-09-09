@@ -1510,7 +1510,7 @@ the port is asked to look *different* on purpose.
     The design was laid out on the desktop canvas and its breakpoints were
     generated from that: the small-screen rules carry pixel margins measured
     for a 1200px stage, so on a phone they push blocks on top of each other.
-    Four things:
+    Five things:
 
     - **The header, below 992px.** The generated header places the logo for the
       325x75 **wordmark** it was designed with: bottom-aligned inside the blue
@@ -1543,6 +1543,15 @@ the port is asked to look *different* on purpose.
       centred ones), and the duplicate graffiti icon is dropped: the card holds
       the same SVG twice, overlapping to the pixel on desktop and side by side,
       left of centre, once the card is full width.
+    - **WHO WE SERVICE in the open off-canvas menu.** It is the only item with
+      a submenu, so nicepage makes its link a flex box to hold the dropdown
+      arrow and pushes the arrow right with `margin-left: auto`. `text-align:
+      center` does not centre a flex line and an auto margin eats the space
+      `justify-content` would have used, so that one label sat hard against the
+      panel's left edge — 164px of text in a 250px panel, spilling off the
+      screen — while its four siblings were centred. The link is a block again
+      and the arrow is positioned instead of margin-pushed, so all five labels
+      centre on the same axis and the arrow keeps the right edge.
     - **Content hanging off the right edge below 340px of sheet width.**
       Nicepage pins the content sheet to a flat 340px below 576px, so an
       iPhone SE and anything narrower overflows.

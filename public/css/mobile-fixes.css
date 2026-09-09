@@ -105,6 +105,40 @@
   }
 }
 
+/* WHO WE SERVICE in the open off-canvas panel.
+ *
+ * It is the only item with a submenu, so nicepage makes its link a flex box to
+ * hold the dropdown arrow, and pushes the arrow to the right edge with
+ * margin-left: auto. text-align: center does not centre a flex line, and an
+ * auto margin eats the free space justify-content would have used — so that
+ * one label starts hard against the panel's left edge, 164px of text in a
+ * 250px panel with its four centred siblings, and spills off the screen.
+ *
+ * Making the link a block again lets the inherited text-align centre the label
+ * exactly like the other four; the arrow keeps the right edge by being taken
+ * out of flow rather than by an auto margin.
+ *
+ * The selector is nicepage's own — .u-dropdown-icon .u-nav-container-collapse
+ * .u-nav-link:first-child:nth-last-child(2), the link that is the first of
+ * exactly two children, i.e. the one followed by a submenu — with .u-header in
+ * front of it, because at five classes and two pseudo-classes the original
+ * outranks anything shorter. */
+@media (max-width: 1199px) {
+  .u-header .u-dropdown-icon .u-nav-container-collapse
+    .u-nav-link:first-child:nth-last-child(2) {
+    display: block;
+    position: relative;
+  }
+  .u-header .u-dropdown-icon .u-nav-container-collapse
+    .u-nav-link:first-child:nth-last-child(2)::after {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    margin: 0;
+    transform: translateY(-50%);
+  }
+}
+
 /* one size down on a phone, where 96px is a fifth of the screen */
 @media (max-width: 575px) {
   .u-header .u-image-1,
