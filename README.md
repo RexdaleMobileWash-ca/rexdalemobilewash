@@ -1073,6 +1073,8 @@ src/seo.config.ts                              everything the port ADDS to the l
                                                site's SEO — hand-written, never generated
 bin/check-images.mjs                           AD-9 enforcement, inside `npm run build`
 bin/check-seo.mjs                              SEO enforcement, inside `npm run build`
+bin/protect-emails.mjs                         email obfuscation over the built HTML,
+                                               inside `npm run build`
 ```
 
 > **`src/seo.config.ts` is hand-written on purpose, and it is the only place the
@@ -1131,7 +1133,7 @@ is itself the dropdown parent.
 ## Verification
 
 ```bash
-npm run build                 # runs the AD-9 image, form-protection and SEO checks
+npm run build                 # obfuscates emails, then the AD-9 image, form and SEO checks
 npm run test:forms            # the four bot-protection layers, vs the real runtime
 npm run verify:image-urls     # every image address in dist/, fetched from img.
 npm run verify:no-old-host    # nothing in dist/ points at the WordPress server
@@ -1329,8 +1331,9 @@ as-is: the Google Fonts links are copied from the live site verbatim.
 
 ## Deliberate differences
 
-Fourteen, all verified. Thirteen were forced; the fourteenth is the one place
-the port is asked to look *different* on purpose.
+Fifteen, all verified. Thirteen were forced; the fourteenth is the one place
+the port is asked to look *different* on purpose, and the fifteenth restores a
+protection the live site gets from Cloudflare and a Worker response cannot.
 
 1. **The `/lookbook/` gallery is repaired.** Its 8 images were hotlinked from
    `www.new.rexdalemobilewash.ca` — a staging host with **no DNS record at all**,
@@ -1561,6 +1564,50 @@ the port is asked to look *different* on purpose.
     below the header is addressed by the section's own id (`#sec-2847`, the
     home page's services row). The header is the one piece of markup every
     page shares.
+
+15. **The email addresses are obfuscated in the markup, and readable without
+    JavaScript.** The live site never publishes a readable address: it sits
+    behind Cloudflare's Scrape Shield, whose Email Address Obfuscation rewrites
+    every one on the way out, so the source carries `[email protected]` and a
+    `/cdn-cgi/l/email-protection#<hex>` href and a Cloudflare script swaps the
+    real address back in for the reader. Fetch any live page and grep it: three
+    obfuscated addresses, zero plaintext.
+
+    That rewriter runs over a response coming *from an origin*. This site has no
+    origin — the Worker **is** the origin, and its response never passes through
+    Scrape Shield. So the port shipped, on all 19 pages, the two addresses the
+    client has had protected for years: 45 `mailto:` hrefs and 15 visible link
+    texts, `dispatch@` and `customerservice@`. It is the kind of regression that
+    does not look broken — the pages render identically and the damage arrives
+    later, as spam, in somebody else's inbox.
+
+    `bin/protect-emails.mjs` restores the protection at the layer Cloudflare did
+    it, over the built HTML, because the markup it has to reach is not
+    hand-maintained: `src/html/*.content.html` and `src/html/_footer.html` are
+    regenerated wholesale by `tools/build_site.py`, so an edit there is lost the
+    next time the port is re-run — the same reason `src/seo.config.ts` exists.
+    It runs inside `npm run build` before the three `check-*` scripts, and fails
+    the build if any address is still readable in the shipped bytes.
+
+    The technique is HTML numeric character references — `dispatch@…` ships as
+    `&#100;&#105;&#115;…`. The parser decodes those before anything else sees
+    them, so unlike Cloudflare's version **this needs no JavaScript**: the
+    `mailto:` link works, the text is selectable and copyable, a screen reader
+    reads the address and so does a crawler. What does not read it is a harvester
+    running a regex over the raw bytes, which is what nearly all of them are.
+    Verified in Chromium across all 15 pages that carry a form: every `mailto:`
+    href decodes to the real address, query string intact. On this one point the
+    port is better than the live site, where a reader with no JavaScript sees
+    the literal string `[email protected]`.
+
+    Deliberately **not** touched: the contents of `<script>` and `<style>`.
+    Character references are not decoded there, so encoding the `Organization`
+    node's `email` would turn the JSON-LD graph into a syntax error. That
+    address is machine-readable structured data by intent (see
+    [What the port adds](#what-the-port-adds)) and is left exactly as written —
+    which does mean `customerservice@` remains greppable in the JSON-LD on 18
+    pages. Dropping it would close that last hole at the cost of the contact
+    point in the structured data; that is the client's call, not the migration's.
 
 ## Known issues carried over from the live site
 

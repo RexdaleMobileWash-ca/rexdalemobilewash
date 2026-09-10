@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && node bin/check-images.mjs && node bin/check-forms.mjs && node bin/check-seo.mjs",
+    "build": "astro build && node bin/protect-emails.mjs && node bin/check-images.mjs && node bin/check-forms.mjs && node bin/check-seo.mjs",
+    "protect:emails": "node bin/protect-emails.mjs",
     "check:images": "node bin/check-images.mjs",
     "check:forms": "node bin/check-forms.mjs",
     "check:seo": "node bin/check-seo.mjs",

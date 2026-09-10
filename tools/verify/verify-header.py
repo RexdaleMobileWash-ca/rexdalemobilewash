@@ -32,6 +32,19 @@ def header_of(path):
     i, j = t.find('<header'), t.find('</header>')
     return t[i:j + len('</header>')] if i >= 0 and j > i else None
 
+# The header carries a `mailto:` link, and bin/protect-emails.mjs rewrites every
+# address in the SHIPPED html into numeric character references — see "Deliberate
+# differences" 15 in the README. The parser decodes those before anything sees
+# them, so it is the same markup; it is not the same bytes. Decode numeric
+# references on BOTH sides before diffing (never one, or a reference the capture
+# itself wrote would read as drift) so this check keeps measuring what it is for:
+# whether Header.astro reproduces the captured header, not how the address is
+# spelled in the output.
+_NUMREF = re.compile(r'&#(\d+);')
+
+def decode_numrefs(s):
+    return _NUMREF.sub(lambda m: chr(int(m.group(1))), s) if s else s
+
 def show(orig, gen, label):
     a = re.sub(r'>\s*<', '>\n<', orig).splitlines()
     b = re.sub(r'>\s*<', '>\n<', gen).splitlines()
@@ -67,8 +80,8 @@ def main():
             print(f'  MISSING {slug}')
             fail2 += 1
             continue
-        captured = B.rewrite(header_of(os.path.join(WORK, 'pages', slug + '.html')))
-        built = header_of(built_path)
+        captured = decode_numrefs(B.rewrite(header_of(os.path.join(WORK, 'pages', slug + '.html'))))
+        built = decode_numrefs(header_of(built_path))
         if captured == built:
             ok2 += 1
         else:
