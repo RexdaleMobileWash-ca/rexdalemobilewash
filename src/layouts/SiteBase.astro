@@ -17,7 +17,7 @@
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import imageHosts from '../../image-hosts.json';
-import { shareImage, describe, dedupeOg, enrichJsonLd } from '../seo.config';
+import { shareImage, describe, dedupeOg, enrichJsonLd, robotsFor } from '../seo.config';
 
 interface Props {
   slug: string;
@@ -47,7 +47,7 @@ interface Props {
 
 const {
   slug, chrome = 'nicepage', bodyClass, title, canonical,
-  robots, og: portedOg = [], named = [], jsonld: portedJsonld, vendor, fonts,
+  robots: portedRobots, og: portedOg = [], named = [], jsonld: portedJsonld, vendor, fonts,
   needsNicepage = true,
   hasForm = false,
   lang = 'en', viewport = 'width=device-width, initial-scale=1.0', profile,
@@ -60,6 +60,7 @@ const {
 // See the comments in src/seo.config.ts for why each addition exists, and
 // bin/check-seo.mjs, which fails the build if any of it stops arriving.
 const description = describe(slug, Astro.props.description);
+const robots = robotsFor(slug, portedRobots);
 const share = shareImage(slug, portedOg);
 const og = dedupeOg(portedOg);
 const jsonld = enrichJsonLd(portedJsonld, slug, { canonical, description, image: share });

@@ -36,6 +36,12 @@ DEST = os.path.join(_ROOT, 'public')
 PROD = 'https://www.rexdalemobilewash.ca'
 IMG_HOST = 'https://' + json.load(open(os.path.join(_ROOT, 'image-hosts.json')))['canonical']
 
+# The same file src/seo.config.ts reads to render the meta tag. Both sides have
+# to agree or the site asks Google to index a page whose own markup refuses —
+# which is why bin/check-sitemaps.mjs compares the two and fails the build.
+NOINDEX = set(json.load(open(os.path.join(_ROOT, 'seo-noindex.json')))['slugs'])
+CHROME = ''
+
 # WordPress's own split, kept because the filenames are kept: a post goes in the
 # post sitemap, an author archive in the author sitemap, everything else is a
 # page. Anything not named here is a page.
@@ -66,11 +72,34 @@ def lastmod(path):
         .isoformat(timespec='seconds')
 
 
-IMG_IN_TAG = re.compile(r'<img\b[^>]*?\ssrc="([^"]+)"')
-# Handles the entity-quoted form too: an inline style attribute carries its own
-# quotes as &quot;, so `url(&quot;https://…&quot;)` is the usual spelling for a
-# hero background and a naive ["'] pattern misses every one of them.
-IMG_IN_CSS = re.compile(r'url\(\s*(?:&quot;|["\'])?([^"\'()]+?)(?:&quot;|["\'])?\s*\)')
+# One pattern, deliberately: any absolute URL on the image host ending in an
+# image extension, wherever it appears. The three targeted patterns this replaced
+# — <img src>, url(…) and the entity-quoted url(&quot;…&quot;) — each covered a
+# real spelling and together still missed the Organization logo, which is a plain
+# JSON value inside the Yoast JSON-LD: `"url":"https://img…/logoclear-1.png"`.
+# A pattern that cannot be fooled by quoting is worth more than three that each
+# know one syntax.
+IMG_ANYWHERE = re.compile(
+    r'https://[^\s"\'<>()]+?\.(?:jpe?g|png|webp|gif|avif|svg)(?=[\s"\'<>()&]|$)', re.I)
+
+# WordPress emits image-1-768x1159.jpg beside image-1.jpg: one photograph at six
+# sizes. Google wants the canonical one listed, not all six.
+RENDITION = re.compile(r'-\d{2,4}x\d{2,4}(?=\.[a-z]+$)', re.I)
+
+
+# Every page renders these three, and none of them is in a page's content file:
+# the header and footer are separate partials, and the favicon is a constant in
+# SiteBase.astro. They were missing from every <url> until the coverage
+# assertion in bin/check-sitemaps.mjs said so.
+def _chrome():
+    out = ''
+    for partial in ('_header.neutral.html', '_footer.html'):
+        f = os.path.join(_ROOT, 'src', 'html', partial)
+        if os.path.exists(f):
+            out += open(f, encoding='utf-8', errors='replace').read()
+    # kept in step with FAVICON in src/layouts/SiteBase.astro
+    out += f'<img src="{IMG_HOST}/2023/12/Rexdale-Mobile-Wash-Logo-Updated-23.webp">'
+    return out
 
 
 def images(html, css=''):
@@ -88,23 +117,28 @@ def images(html, css=''):
 
     Two exclusions that do need stating.
 
-    **The Instagram feed.** The home page carries 158 tiles harvested from the
-    client's Instagram; its own content is 19 images. Listing the feed would make
-    the sitemap 89% someone else's photographs, and they are not this site's
-    content in any sense Google cares about.
+    The Instagram tiles are included. They were excluded on the reasoning that
+    they are "someone else's photographs", which was simply wrong: they are the
+    client's own work photos, from the client's own Instagram account, harvested
+    into the client's own bucket and served from the client's own domain. There
+    is no sense in which they belong to anyone else, and 158 photographs of the
+    work this business does is exactly what Google Images should be able to find.
+    The per-URL limit is 1,000 images, so the home page's 177 is comfortable.
 
-    **Anything not on the image host.** That drops the Smash Balloon UI sprite at
-    /css/assets/, which is chrome served by the Worker, and would drop any
-    third-party image if one ever appeared.
+    **Anything not on the image host is still dropped.** That is the Smash
+    Balloon UI sprite at /css/assets/, which is chrome served by the Worker, and
+    would be any third-party image if one ever appeared.
     """
-    found = IMG_IN_TAG.findall(html) + IMG_IN_CSS.findall(html) + IMG_IN_CSS.findall(css)
+    found = [u for u in IMG_ANYWHERE.findall(html + '\n' + css)
+             if u.startswith(IMG_HOST + '/')]
+    canonical = {u for u in found if not RENDITION.search(u)}
 
     out, seen = [], set()
     for url in found:
-        url = url.strip()
-        if not url.startswith(IMG_HOST + '/'):
-            continue
-        if '/instagram/' in url:
+        # A rendition is dropped only when the image it is a rendition OF is also
+        # on the page. If a page shows only the 768px copy, that copy IS the
+        # image there and leaving it out would lose it.
+        if RENDITION.search(url) and RENDITION.sub('', url) in canonical:
             continue
         if url in seen:
             continue
@@ -155,6 +189,8 @@ def index(children):
 
 
 def main():
+    global CHROME
+    CHROME = _chrome()
     meta_path = os.path.join(WORK, 'pages_meta.json')
     if not os.path.exists(meta_path):
         print(f"  no {meta_path} — run build_site.py first")
@@ -172,12 +208,15 @@ def main():
         if slug.startswith('_'):
             continue
         # A page that tells crawlers not to index it has no business being
-        # submitted for indexing. Nothing on this site does today; the rule is
-        # here so that the day one does, the sitemap follows without anyone
-        # having to remember.
+        # submitted for indexing. Two sources, because there are two ways a page
+        # can end up noindex: the live site said so and it came through the
+        # capture, or seo-noindex.json says so and the port decided it.
         robots = (d.get('meta') or {}).get('robots', '')
+        if slug in NOINDEX:
+            skipped.append((slug, 'noindex (seo-noindex.json)'))
+            continue
         if 'noindex' in robots.lower():
-            skipped.append((slug, 'noindex'))
+            skipped.append((slug, 'noindex (from the live site)'))
             continue
         content = os.path.join(_ROOT, 'src', 'html', f'{slug}.content.html')
         if not os.path.exists(content):
@@ -187,8 +226,14 @@ def main():
         html = open(content, encoding='utf-8', errors='replace').read()
         sheet = os.path.join(_ROOT, 'public', 'css', f'page-{slug}.css')
         css = open(sheet, encoding='utf-8', errors='replace').read() if os.path.exists(sheet) else ''
+        # The page's own head metadata is a fourth source: Yoast's JSON-LD names
+        # the Organization logo, which appears nowhere in the body, the chrome or
+        # the stylesheet. Found by the coverage assertion in check-sitemaps.mjs
+        # rather than by reading the markup and hoping.
+        m = d.get('meta') or {}
+        head = (m.get('jsonld') or '') + ''.join(v for _, v in (m.get('og') or []))
         buckets[SLUG_SITEMAP.get(slug, 'page')].append(
-            (url, lastmod(content), images(html, css)))
+            (url, lastmod(content), images(html + CHROME + head, css)))
 
     children = []
     for name in SITEMAPS:
@@ -208,12 +253,16 @@ def main():
     open(os.path.join(DEST, 'sitemap_index.xml'), 'w', encoding='utf-8').write(index(children))
     print(f"  public/{'sitemap_index.xml':24} {len(children)} sitemap(s)")
 
-    # The old copies are no longer generated; leaving one behind in public/ would
-    # ship a stale sitemap that nothing maintains.
-    stale = os.path.join(DEST, 'e-landing-page-sitemap.xml')
-    if os.path.exists(stale):
-        os.remove(stale)
-        print("  removed public/e-landing-page-sitemap.xml (0 URLs — a Search Console error)")
+    # Anything not written this run is stale: a sitemap from a previous shape of
+    # the site, still in public/, still shipped, maintained by nothing. That
+    # includes e-landing-page-sitemap.xml, which was Yoast's empty one, and any
+    # child that has just been emptied by a page becoming noindex.
+    kept = {name for name, _ in children}
+    for path in sorted(glob.glob(os.path.join(DEST, '*-sitemap.xml'))):
+        name = os.path.basename(path)
+        if name not in kept:
+            os.remove(path)
+            print(f"  removed public/{name} (no URLs left to list)")
 
     for slug, why in skipped:
         print(f"  skipped {slug}: {why}")

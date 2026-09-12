@@ -34,8 +34,9 @@ adds" in README.md), so the diff is asymmetric on purpose:
   * a tag on the LIVE side and not on the port side is always a failure — that
     is a regression, and catching it is the whole reason this tool exists;
   * a tag on the PORT side and not on the live side is a failure UNLESS it is
-    one of the listed additions in ADDED, or a description on one of the four
-    pages listed in DESC_OVERRIDDEN.
+    one of the listed additions in ADDED, a description on one of the four pages
+    listed in DESC_OVERRIDDEN, or the robots directive on one of the pages in
+    seo-noindex.json, which the port deliberately takes out of the index.
 
 One more asymmetry: every live page emits two competing sets of Open Graph
 tags, Nicepage's then Yoast's, so `og:title` and `og:description` each appear
@@ -94,6 +95,16 @@ DESC_OVERRIDDEN = {
     '/lookbook/',               # live has none
     '/blog-post-title/',        # live has none
     '/author/admin/',           # live has none
+}
+
+# Pages the port takes OUT of the index that the live site leaves in. Read from
+# seo-noindex.json rather than listed again here, so this tool and the two things
+# that act on the list cannot drift apart. The routes are derived from the slugs
+# the same way gen_pages.py derives them: 'author-admin' serves at /author/admin/.
+_SLUG_ROUTE = {'home': '/', 'author-admin': '/author/admin/'}
+ROBOTS_OVERRIDDEN = {
+    _SLUG_ROUTE.get(s, f'/{s}/')
+    for s in json.load(open(os.path.join(_ROOT, 'seo-noindex.json')))['slugs']
 }
 
 # Open Graph properties that may hold only one value, so a second is a bug.
@@ -189,7 +200,16 @@ def main():
             print(f'  FAIL  {r:<28} {"live" if L is None else "port"} returned no <head>')
             continue
         is_desc = lambda t: t.startswith('<meta name="description"')
-        drop = (lambda t: is_desc(t)) if r in DESC_OVERRIDDEN else (lambda t: False)
+        is_robots = lambda t: t.startswith('<meta name="robots"')
+        drops = []
+        if r in DESC_OVERRIDDEN:
+            drops.append(is_desc)
+        if r in ROBOTS_OVERRIDDEN:
+            # Both sides are dropped, not just the port's: the live value is
+            # `index, follow` and the port's is `noindex, follow`, so leaving
+            # either in place reports the deliberate difference as a regression.
+            drops.append(is_robots)
+        drop = lambda t: any(f(t) for f in drops)
 
         only_live = [t for t in L if t not in S and not drop(t) and not DROPPED.search(t)]
         only_port = [t for t in S if t not in L and not ADDED.search(t) and not drop(t)]

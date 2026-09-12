@@ -18,6 +18,8 @@
 // the site does not publish any.
 
 /** The production origin. Matches `site` in astro.config.mjs. */
+import NOINDEX from '../seo-noindex.json';
+
 export const SITE = 'https://www.rexdalemobilewash.ca';
 
 const IMG = 'https://img.rexdalemobilewash.ca';
@@ -226,6 +228,24 @@ const DESCRIPTIONS: Record<string, string> = {
 /** The description to render: an override where one exists, else the ported value. */
 export function describe(slug: string, ported?: string): string | undefined {
   return DESCRIPTIONS[slug] ?? ported;
+}
+
+/**
+ * Pages kept out of the index.
+ *
+ * The list is in `seo-noindex.json` rather than here, because it is read in two
+ * languages: this file renders the meta tag, `tools/gen_sitemaps.py` leaves the
+ * page out of the sitemaps, and `bin/check-sitemaps.mjs` fails the build if the
+ * two ever disagree. A page that is noindex and still in a sitemap asks Google
+ * for exactly what its own markup refuses, and Search Console reports the pair
+ * as an error.
+ *
+ * This overrides the live site's value, which is `index, follow` on both pages.
+ * It is the one place the port deliberately tells crawlers something different
+ * from what WordPress told them — recorded under Deliberate differences.
+ */
+export function robotsFor(slug: string, ported?: string): string | undefined {
+  return slug in NOINDEX.slugs ? NOINDEX.directive : ported;
 }
 
 /**

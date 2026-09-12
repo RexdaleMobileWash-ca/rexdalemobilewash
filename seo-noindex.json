@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "Pages that must not be indexed, and why. CURRENTLY EMPTY ON PURPOSE: every",
+    "page on this site is to be indexed. The machinery stays because three things",
+    "read this file in two languages — src/seo.config.ts renders the meta tag,",
+    "tools/gen_sitemaps.py leaves the page out of the sitemaps, and",
+    "bin/check-sitemaps.mjs fails the build if those two ever disagree — so",
+    "taking a page out of the index later is one line here rather than three",
+    "edits in three places that can be done inconsistently.",
+    "It was briefly used for /blog-post-title/ and /author/admin/, the two thin",
+    "WordPress placeholder pages. That was reversed: the instruction is that every",
+    "page is indexed. If it is ever reinstated, note that noindex needs the page",
+    "to stay CRAWLABLE — a robots.txt Disallow stops Google reading the noindex it",
+    "is being blocked to enforce, so the page can sit in the index indefinitely on",
+    "inbound links alone. Use this file, not robots.txt.",
+    "`noindex, follow` and not `nofollow`: a page kept out of the index still",
+    "links into the real site, and there is no reason to throw that away."
+  ],
+  "directive": "noindex, follow",
+  "slugs": {}
+}

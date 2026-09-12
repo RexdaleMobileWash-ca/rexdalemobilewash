@@ -106,12 +106,43 @@ let imageCount = 0;
 for (const [child] of listed) {
   for (const loc of tags(text(child), 'image:loc')) {
     imageCount++;
+    // Only that it is on the image host. The Instagram tiles are NOT excluded:
+    // they are the client's own work photos in the client's own bucket, and
+    // every image on this site is to be indexed.
     if (!loc.startsWith(IMG + '/')) fail(`${child}: image ${loc} is not on ${IMG}`);
-    if (loc.includes('/instagram/')) {
-      fail(`${child}: ${loc} is an Instagram tile — the feed does not belong in a sitemap`);
-    }
   }
 }
+
+// -- coverage: every image the built site actually shows must be listed
+//
+// The point of an image sitemap here is that every image gets indexed, and an
+// image the generator never saw is invisible — it is not wrong, it is absent,
+// which is exactly the failure a check has to make loud. This caught three:
+// the logo, the footer skyline and the favicon, none of which live in a page's
+// content file.
+//
+// Responsive renditions are excluded from the requirement. WordPress emits
+// `image-1-768x1159.jpg` beside `image-1.jpg`; they are one photograph at six
+// sizes, and Google wants the canonical one listed, not all six.
+const RENDITION = /-\d{2,4}x\d{2,4}(?=\.[a-z]+$)/i;
+const shown = new Set();
+for (const f of walk(dist)) {
+  if (!/\.(html|css)$/.test(f)) continue;
+  for (const m of readFileSync(f, 'utf8').matchAll(
+    new RegExp(IMG.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/[^"\'&)\\s<]+', 'g'))) {
+    shown.add(m[0].replace(/[.,;]+$/, ''));
+  }
+}
+const listedImages = new Set();
+for (const [child] of listed) {
+  for (const loc of tags(text(child), 'image:loc')) listedImages.add(loc);
+}
+const uncovered = [...shown].filter(
+  (u) => !listedImages.has(u) && !RENDITION.test(u) && !listedImages.has(u.replace(RENDITION, '')));
+for (const u of uncovered.slice(0, 10)) {
+  fail(`${u.replace(IMG, '')} is shown by the site but is in no sitemap`);
+}
+if (uncovered.length > 10) fail(`…and ${uncovered.length - 10} more images shown but not listed`);
 
 // -- robots.txt has to say where the sitemap is
 const robotsTxt = existsSync(join(dist, 'robots.txt')) ? text('robots.txt') : '';
@@ -137,6 +168,8 @@ p('routes marked noindex', noindex.size);
 p('sitemaps in the index', children.length);
 p('urls listed', inSitemaps.size);
 p('images listed', imageCount);
+p('distinct images listed', listedImages.size);
+p('shown but not listed', uncovered.length);
 p('problems', problems.length);
 
 if (problems.length) {
