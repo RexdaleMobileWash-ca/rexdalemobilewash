@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SEO enforcement. Exits 1 if a page ships without the metadata it must carry,
-// or if the sitemaps and the built pages have drifted apart.
+// (sitemap drift is bin/check-sitemaps.mjs's job — see the note below).
 //
 // This exists for the same reason bin/check-images.mjs and bin/check-forms.mjs
 // do. A page that loses its canonical, its description or its share image does
@@ -16,14 +16,15 @@
 //     the first, which is the wrong one. src/seo.config.ts de-duplicates them.
 //     If that ever stops running, the pages still render and the wrong card
 //     comes back — silently. This fails the build instead.
-//   * SITEMAP DRIFT. The sitemaps are the live site's own, copied at gate 8 and
-//     un-refetchable once the WordPress site is switched off. A route renamed
-//     here without touching them points Google at a 404 from the crawl entry
-//     point itself.
+//
+// The sitemaps are no longer this file's concern. They were Yoast's own files,
+// copied at gate 8, when three assertions here guarded them against drift; they
+// are generated from the built site now and bin/check-sitemaps.mjs owns checking
+// them, including the cases a generator makes possible that a copy never did.
 //
 // It runs inside `npm run build`, joined with &&, so it runs in Workers Builds
 // on every deploy and a violation fails the deploy rather than reaching anyone.
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -139,37 +140,16 @@ for (const file of walk(dist)) {
 }
 
 // --- sitemaps -------------------------------------------------------------
-const robotsTxt = existsSync(join(dist, 'robots.txt'))
-  ? readFileSync(join(dist, 'robots.txt'), 'utf8') : '';
-if (!/^\s*Sitemap:\s*\S+/im.test(robotsTxt))
-  fails.push(['/robots.txt', 'names no Sitemap:']);
-
-const locs = (xml) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => decode(m[1]));
-const built = new Set(pages.map((p) => p.route));
-const indexed = new Set();
-
-const indexPath = join(dist, 'sitemap_index.xml');
-if (!existsSync(indexPath)) {
-  fails.push(['/sitemap_index.xml', 'missing — this is the crawl entry point']);
-} else {
-  for (const loc of locs(readFileSync(indexPath, 'utf8'))) {
-    const name = loc.replace(SITE, '').replace(/^\//, '');
-    const p = join(dist, name);
-    if (!existsSync(p)) { fails.push([`/${name}`, 'named by sitemap_index but not built']); continue; }
-    for (const url of locs(readFileSync(p, 'utf8'))) {
-      if (!url.startsWith(SITE)) continue;
-      const route = url.replace(SITE, '') || '/';
-      indexed.add(route);
-      if (!built.has(route)) fails.push([`/${name}`, `lists ${route}, which this site does not build`]);
-    }
-  }
-}
-
-// A page told not to be indexed has no business in a sitemap: the sitemap asks
-// for exactly what the robots tag refuses, and Search Console reports the pair
-// as an error against the site.
-for (const p of pages)
-  if (p.noindex && indexed.has(p.route)) fails.push([p.route, 'is noindex but is in a sitemap']);
+// Owned by bin/check-seo.mjs no longer. Three assertions used to live here —
+// robots.txt names a Sitemap:, every <loc> resolves to a page this site builds,
+// and no noindex page sits in a sitemap — written when the sitemaps were still
+// Yoast's own files copied out of the capture. They are generated now
+// (tools/gen_sitemaps.py), and bin/check-sitemaps.mjs checks all three plus the
+// cases only a generator makes possible: a served page in no sitemap at all, an
+// empty sitemap, a stale or missing lastmod, an image off the image host.
+//
+// Both checks run in `npm run build`. Two of them reading the same files is two
+// of them drifting, so this one stops at the <head>.
 
 // --- duplicate descriptions ----------------------------------------------
 // Two pages sharing a description compete for the same snippet and tell Google
@@ -189,7 +169,6 @@ const p = (l, n) => console.log(`  ${(l + ' ').padEnd(36, '.')} ${n}`);
 console.log('\nSEO CHECK\n');
 p('pages checked', pages.length);
 p('indexable', pages.filter((x) => !x.noindex).length);
-p('URLs in sitemaps', indexed.size);
 p('warnings', warns.length);
 p('failures', fails.length);
 
