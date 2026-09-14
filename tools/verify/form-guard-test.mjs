@@ -55,7 +55,7 @@ for (const need of ['RESEND_API_KEY', 'TURNSTILE_SECRET', 'CONTACT_TO']) {
     process.exit(1);
   }
 }
-if (!/CONTACT_TO\s*=\s*"?delivered@resend\.dev/.test(devVars)) {
+if (!/CONTACT_TO\s*=\s*['"]?delivered@resend\.dev/.test(devVars)) {
   // A test run that mails the client's real inbox 5 times is not a test.
   console.error('Refusing to run: CONTACT_TO in .dev.vars must be delivered@resend.dev');
   process.exit(1);
@@ -224,6 +224,24 @@ function check(name, pass, detail) {
   console.log(`  ${pass ? 'PASS' : 'FAIL'}  ${name.padEnd(52)} ${detail}`);
 }
 
+/** Apply the schema to the LOCAL D1 before anything starts.
+ *
+ *  Local D1 persists under dist/server/.wrangler, which `astro build` deletes
+ *  along with the rest of dist/. So after every build the database is gone and
+ *  every row assertion below reads zero — which looks exactly like the endpoint
+ *  failing to store anything. Run the migration here, once, before the server
+ *  comes up: it is idempotent (CREATE TABLE IF NOT EXISTS) and costs one spawn. */
+function migrate() {
+  const out = spawnSync('npx', ['wrangler', 'd1', 'execute', 'FORMS_DB', '--local',
+    '--config', CONFIG, '--file', join(root, 'migrations', '0001_submissions.sql'), '-y'],
+    { cwd: root, encoding: 'utf8' });
+  if (out.status !== 0) {
+    console.error('Could not apply migrations/0001_submissions.sql to the local D1:');
+    console.error((out.stderr || out.stdout || '').slice(-1500));
+    process.exit(1);
+  }
+}
+
 /** How many times the Worker has logged an actual send, so far. */
 const sendCount = () => (log.match(/\[contact\] SENT /g) || []).length;
 const rejectionsFor = (reason) =>
@@ -232,6 +250,7 @@ const rejectionsFor = (reason) =>
 /* ----------------------------------------------------------------- the cases */
 
 async function run() {
+  migrate();
   await startDev();
   console.log(`\nFORM GUARD TEST — ${BASE}/api/contact/\n`);
 
