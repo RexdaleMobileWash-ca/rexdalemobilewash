@@ -91,7 +91,7 @@ Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
 worker .......................... rexdalemobilewash
 repo ............................ RexdaleMobileWash-ca/rexdalemobilewash @ main
 build ........................... npm run build   deploy: npx wrangler deploy
-review hostname ................. staging.rexdalemobilewash.ca  (noindex)
+review hostname ................. astro.rexdalemobilewash.ca  (noindex)
                                   rexdalemobilewash.ash-47a.workers.dev
 cutover hostname ................ not attached — that is gate 13
 zone ............................ rexdalemobilewash.ca, ACTIVE on Cloudflare
@@ -102,7 +102,7 @@ preview URLs .................... disabled
 ### Deploy test, run against the deployed host
 
 ```bash
-DEPLOY_HOST=https://staging.rexdalemobilewash.ca npm run verify:deploy
+DEPLOY_HOST=https://astro.rexdalemobilewash.ca npm run verify:deploy
 ```
 
 ```
@@ -133,7 +133,7 @@ read by the Workers asset runtime. `npx wrangler dev` against `dist/client`
 serves the real thing (it logs `Parsed N valid redirect rules` / `header rules`
 on startup) and is the way to check them without deploying.
 
-### The review hostname: staging.rexdalemobilewash.ca
+### The review hostname: astro.rexdalemobilewash.ca
 
 **The zone is `active`, not pending.** An earlier version of this file said
 `*.rexdalemobilewash.ca` could not be used because the zone was pending with
@@ -141,11 +141,27 @@ nameservers at GoDaddy. It is not: `rexdalemobilewash.ca` is authoritative on
 Cloudflare (`dee`/`josh.ns.cloudflare.com`), so gate 6 is done — which also
 unblocks gate 7's `img.` hostname.
 
-`staging.rexdalemobilewash.ca` is attached to the Worker as a Custom Domain,
+`astro.rexdalemobilewash.ca` is attached to the Worker as a Custom Domain,
 declared in `wrangler.jsonc` under `routes` so it survives every future
 `wrangler deploy` rather than being attached by hand. Cloudflare creates and
 owns the proxied DNS record (an `AAAA` to `100::`, its standard placeholder for
 a proxied Worker route), so there is no separate record to keep in sync.
+
+It was `staging.rexdalemobilewash.ca` until the rename, and the rename is worth
+recording because only half of it is in the repo. Changing the `routes` pattern
+and deploying does the DNS half on its own: wrangler reconciles `routes` against
+the Worker's attached Custom Domains, so it attaches `astro.`, detaches
+`staging.`, and Cloudflare deletes the old proxied record as it goes — the zone
+went 36 records in, 36 records out, one swapped, the mail records untouched. The
+half it does **not** do is the transform rule below, which lives in the zone and
+matches on `http.host`. Left alone it would have kept covering a hostname that
+no longer exists while the renamed one served a full copy of the client's site
+with no `noindex` at all. Repoint the existing rule rather than adding a second:
+```bash
+PATCH /zones/{zone}/rulesets/{http_response_headers_transform}/rules/{rule}
+```
+sent with the whole rule body — the API rejects a partial one for a missing
+`action` even though it is a PATCH.
 
 Attaching it added **exactly one** record to a zone that carries the client's
 live Microsoft 365 mail. The 32 records that were there before — `MX` to
@@ -157,7 +173,7 @@ pointing the real domain here is gate 13.
 
 **It is `noindex`.** It serves a complete copy of the client's site on their own
 brand domain, so a Cloudflare Response Header Transform Rule scoped to
-`http.host eq "staging.rexdalemobilewash.ca"` sets
+`http.host eq "astro.rexdalemobilewash.ca"` sets
 `X-Robots-Tag: noindex, nofollow`. The scoping is the point: the same header in
 `public/_headers` would apply to every hostname the Worker answers on and would
 follow the site onto the production domain at gate 13, deindexing the client.
@@ -889,7 +905,7 @@ no `Origin` header outright. Browsers always send one on a POST, so it costs
 nothing and adds a layer — but it means a `curl` test without `-H Origin:` gets
 a 403 that looks like a broken route.
 
-And on the deployed Worker at `staging.rexdalemobilewash.ca`:
+And on the deployed Worker at `astro.rexdalemobilewash.ca`:
 
 ```
 GET  /api/contact/            405 + Allow: POST
