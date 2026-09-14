@@ -161,6 +161,38 @@ for (const f of [...listed.keys(), 'sitemap_index.xml']) {
   if (open !== close) fail(`${f}: ${open} <url> vs ${close} </url>`);
 }
 
+// -- the browser rendering
+//
+// sitemap.xsl is what a person sees when they open a sitemap in a browser. It is
+// XML itself, so a bare `<` anywhere in the CSS or a stray tag silently turns
+// every sitemap back into a wall of angle brackets — the XML the crawler reads
+// is unaffected, which is exactly why nobody notices. Three things are checked:
+// it exists, it parses, and it pulls nothing off the network (a sitemap
+// renderer that can be broken by a third party being down is not worth having).
+let xslRefs = 0;
+if (!existsSync(join(dist, 'sitemap.xsl'))) {
+  fail('sitemap.xsl is missing — every sitemap references it in <?xml-stylesheet?>');
+} else {
+  const xsl = text('sitemap.xsl');
+  // Angle brackets inside the two text-bearing elements are the failure mode.
+  for (const tag of ['style', 'title']) {
+    const body = xsl.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`))?.[1] ?? '';
+    if (/<(?!\/?(?:xsl:|!--))/.test(body)) {
+      fail(`sitemap.xsl: raw "<" inside <${tag}> — the file will not parse as XML`);
+    }
+  }
+  for (const [, url] of xsl.matchAll(/\b(?:src|href)\s*=\s*"(https?:\/\/[^"]+)"/g)) {
+    fail(`sitemap.xsl fetches ${url} — it must be self-contained`);
+  }
+  if (/@import|fonts\.googleapis|fonts\.gstatic/.test(xsl)) {
+    fail('sitemap.xsl pulls in an external stylesheet or font');
+  }
+  for (const f of [...listed.keys(), 'sitemap_index.xml']) {
+    if (text(f).includes('<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>')) xslRefs++;
+    else fail(`${f} does not reference /sitemap.xsl`);
+  }
+}
+
 const p = (l, n) => console.log(`  ${(l + ' ').padEnd(36, '.')} ${n}`);
 console.log('\nSITEMAP CHECK\n');
 p('routes served', served.size);
@@ -170,6 +202,7 @@ p('urls listed', inSitemaps.size);
 p('images listed', imageCount);
 p('distinct images listed', listedImages.size);
 p('shown but not listed', uncovered.length);
+p('sitemaps styled by sitemap.xsl', xslRefs);
 p('problems', problems.length);
 
 if (problems.length) {

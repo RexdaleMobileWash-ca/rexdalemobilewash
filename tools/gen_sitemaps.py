@@ -197,10 +197,16 @@ def main():
         return 1
     meta = json.load(open(meta_path))
 
-    xsl = os.path.join(SRC, 'main-sitemap.xsl')
-    if os.path.exists(xsl):
-        shutil.copyfile(xsl, os.path.join(DEST, 'sitemap.xsl'))
-        print(f"  public/sitemap.xsl   {os.path.getsize(xsl)} bytes")
+    # public/sitemap.xsl is a source file in this repo, not an output. It used to
+    # be copied from the capture on every run, which meant the browser rendering
+    # of these sitemaps was Yoast's — including a line crediting Yoast SEO for
+    # generating them and an outbound link to yoa.st, both false the moment this
+    # script took over. Edit public/sitemap.xsl directly; nothing overwrites it.
+    xsl = os.path.join(DEST, 'sitemap.xsl')
+    if not os.path.exists(xsl):
+        print(f"  MISSING {xsl} — the sitemaps reference it in <?xml-stylesheet?>")
+        return 1
+    print(f"  public/sitemap.xsl   {os.path.getsize(xsl)} bytes (source, not generated)")
 
     buckets = {name: [] for name in SITEMAPS}
     skipped = []
