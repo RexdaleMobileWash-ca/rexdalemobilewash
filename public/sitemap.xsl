@@ -25,27 +25,44 @@
 <xsl:output method="html" encoding="UTF-8" indent="yes"
 	doctype-system="about:legacy-compat"/>
 
-<!-- Render an address as a muted host plus an emphasised path, so the eye lands
+<!-- One row's address, as a link.
+
+     The <loc> in a sitemap is and must stay the canonical production address —
+     that is the whole point of the file, and it is what Google is being told to
+     index. But this page is also served from the review hostname, where a link
+     straight to www. walks the reader off onto the old WordPress site mid-audit,
+     which is the opposite of what a sitemap rendering is for.
+
+     So the text shows the canonical address and the href is path-only. The
+     browser resolves it against whatever host the reader is already on: on the
+     review host the links stay on the review host, on production they resolve to
+     production, and neither case needs to know which one it is.
+
+     The address is also split — muted host, emphasised path — so the eye lands
      on the part that differs between rows instead of re-reading the domain 16
-     times. On a phone the host is hidden outright: it is the same on every row
-     and the screen is 390px wide. Falls back to the raw address if the string
-     is not shaped like a URL. -->
-<xsl:template name="split-url">
+     times. On a phone the host is dropped outright: identical on every row, and
+     the screen is 390px wide. A string not shaped like a URL is linked and shown
+     verbatim rather than mangled. -->
+<xsl:template name="loc-link">
 	<xsl:param name="loc"/>
 	<xsl:variable name="rest" select="substring-after($loc, '://')"/>
 	<xsl:variable name="host" select="substring-before($rest, '/')"/>
 	<xsl:choose>
 		<xsl:when test="$host != ''">
-			<span class="host">
-				<xsl:value-of select="substring-before($loc, $host)"/>
-				<xsl:value-of select="$host"/>
-			</span>
-			<span class="path">
-				<xsl:text>/</xsl:text>
-				<xsl:value-of select="substring-after($rest, '/')"/>
-			</span>
+			<a href="/{substring-after($rest, '/')}">
+				<span class="host">
+					<xsl:value-of select="substring-before($loc, $host)"/>
+					<xsl:value-of select="$host"/>
+				</span>
+				<span class="path">
+					<xsl:text>/</xsl:text>
+					<xsl:value-of select="substring-after($rest, '/')"/>
+				</span>
+			</a>
 		</xsl:when>
-		<xsl:otherwise><xsl:value-of select="$loc"/></xsl:otherwise>
+		<xsl:otherwise>
+			<a href="{$loc}"><xsl:value-of select="$loc"/></a>
+		</xsl:otherwise>
 	</xsl:choose>
 </xsl:template>
 
@@ -182,7 +199,7 @@
 		a:hover, a:focus { text-decoration: underline; }
 		a:focus-visible { outline: 2px solid var(--brandw); outline-offset: 2px; }
 		.zero { color: var(--muted); }
-		footer { margin-top: 22px; color: var(--muted); font-size: 12px; }
+		footer { margin-top: 22px; max-width: 78ch; color: var(--muted); font-size: 12px; }
 		/* Below ~640px the two trailing columns cost more than they tell you, and
 		   so does the host: it is identical on every row. Dropping the columns is
 		   the address column then takes the whole width on its own. */
@@ -231,11 +248,9 @@
 				<xsl:for-each select="sitemap:sitemapindex/sitemap:sitemap">
 					<tr>
 						<td>
-							<a href="{sitemap:loc}">
-								<xsl:call-template name="split-url">
-									<xsl:with-param name="loc" select="sitemap:loc"/>
-								</xsl:call-template>
-							</a>
+							<xsl:call-template name="loc-link">
+								<xsl:with-param name="loc" select="sitemap:loc"/>
+							</xsl:call-template>
 						</td>
 						<td class="when">
 							<xsl:call-template name="pretty-date">
@@ -246,7 +261,9 @@
 				</xsl:for-each>
 			</tbody>
 		</table>
-		<footer>Each row is a sitemap. Open one to see the addresses it lists.</footer>
+		<footer>Each row is a sitemap. Open one to see the addresses it lists.
+		Addresses are shown as the sitemap records them — the production domain —
+		but the links open on whichever host you are viewing this from.</footer>
 	</xsl:if>
 
 	<!-- ================================================= a single sitemap -->
@@ -271,11 +288,9 @@
 				<xsl:for-each select="sitemap:urlset/sitemap:url">
 					<tr>
 						<td>
-							<a href="{sitemap:loc}">
-								<xsl:call-template name="split-url">
-									<xsl:with-param name="loc" select="sitemap:loc"/>
-								</xsl:call-template>
-							</a>
+							<xsl:call-template name="loc-link">
+								<xsl:with-param name="loc" select="sitemap:loc"/>
+							</xsl:call-template>
 						</td>
 						<td class="num">
 							<xsl:variable name="n" select="count(image:image)"/>
@@ -296,7 +311,9 @@
 		<footer>
 			<xsl:text>Images counts the </xsl:text>
 			<code>&lt;image:image&gt;</code>
-			<xsl:text> entries submitted with each page. Times are UTC.</xsl:text>
+			<xsl:text> entries submitted with each page. Times are UTC. Addresses are
+			shown as the sitemap records them — the production domain — but the links
+			open on whichever host you are viewing this from.</xsl:text>
 		</footer>
 	</xsl:if>
 
