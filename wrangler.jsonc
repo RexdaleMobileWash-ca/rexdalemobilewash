@@ -64,6 +64,20 @@
   // and saying so, rather than pretending the limit is there. Creating the
   // namespace needs a KV permission this session's token does not carry
   // (/accounts/…/storage/kv/namespaces → 10000 Authentication error).
+  // Form submissions. The row is written before Resend is called and updated
+  // with the outcome after, so a submission is never lost to an email failure —
+  // and the hourly rate limit is a COUNT over this table, which is what finally
+  // makes "3 per form per hour" real (the binding below cannot express an hour).
+  //
+  //     npx wrangler d1 execute rexdalemobilewash-forms --remote \
+  //         --file migrations/0001_submissions.sql
+  "d1_databases": [
+    {
+      "binding": "FORMS_DB",
+      "database_name": "rexdalemobilewash-forms",
+      "database_id": "0a00622d-6c97-4434-8135-baa14952b1e9"
+    }
+  ],
   "ratelimits": [
     {
       "name": "CONTACT_RATE_LIMIT",

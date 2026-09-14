@@ -10,6 +10,9 @@ import {
   checkTurnstile, checkHoneypot, checkDwell, checkName, checkEmailDomain,
   checkRateLimit, logRejection, type Verdict, type RateLimitStores,
 } from '../../lib/spam-guard';
+import {
+  record, markSent, markFailed, recentCount, type D1Like,
+} from '../../lib/submissions';
 
 // The one route on this site that is NOT prerendered, and the reason the
 // Cloudflare adapter is here at all. A prerendered API route is written to a
@@ -306,9 +309,14 @@ export const POST: APIRoute = async ({ request }) => {
   // --- layer 4: rate limit. Before Turnstile, so a flood cannot run up
   //     siteverify calls either.
   const bag = env as unknown as Record<string, unknown>;
+  const db = bag.FORMS_DB as D1Like | undefined;
   const stores: RateLimitStores = {
     burst: bag.CONTACT_RATE_LIMIT as RateLimitStores['burst'],
-    hourly: bag.FORM_RATE_LIMIT as RateLimitStores['hourly'],
+    // The hourly budget is counted in D1 now. It was going to be a KV namespace
+    // that never got created, which left the limit degraded to the burst brake
+    // alone; D1 counts account-wide and exactly, where the binding counts per
+    // data centre and does not claim to be accurate.
+    hourlyCount: () => recentCount(db, ip, spec.id),
   };
   const rate = await checkRateLimit(stores, spec.id, ip);
   if (!rate.ok) return reject(rate);
@@ -332,6 +340,25 @@ export const POST: APIRoute = async ({ request }) => {
 
   const { text, html, subject } = body(spec, values, meta);
 
+  // Stored BEFORE the send, which is the whole reason the database is here. If
+  // Resend is down, the visitor is still told it worked — so the enquiry has to
+  // exist somewhere that does not depend on Resend having worked.
+  const id = crypto.randomUUID();
+  const stored = await record(db, {
+    id,
+    form: spec.id,
+    page: meta.page,
+    name: values[spec.nameField],
+    email: values[spec.emailField],
+    subject: spec.subjectField ? values[spec.subjectField] : (spec.subject ?? null),
+    message: values[spec.fields[spec.fields.length - 1][1]] || null,
+    ip,
+    country: meta.country,
+    city: meta.city,
+    region: meta.region,
+    userAgent: request.headers.get('user-agent') || undefined,
+  });
+
   // Exactly one call to Resend, on the one path that reaches here. There is no
   // confirmation email and no second recipient: "send the visitor a copy too" is
   // the usual way a form quietly starts sending twice.
@@ -353,23 +380,31 @@ export const POST: APIRoute = async ({ request }) => {
     });
   } catch (e) {
     console.error('[contact] resend request failed', e);
+    await markFailed(db, id, (e as Error).message);
+    // The row survives with resend_status='failed'. The enquiry is recoverable
+    // even though the email never left.
     return formPost ? back(meta.page, 'failed', unitTag) : json('failed', 502, MESSAGES.failed);
   }
 
   if (!res.ok) {
     // The body, not just the status: Resend names the reason — an unverified
     // sending domain, a malformed address — and the status alone does not.
-    console.error('[contact] resend rejected the message', res.status,
-      await res.text().catch(() => ''));
+    const why = await res.text().catch(() => '');
+    console.error('[contact] resend rejected the message', res.status, why);
+    await markFailed(db, id, `${res.status} ${why}`);
     return formPost ? back(meta.page, 'failed', unitTag) : json('failed', 502, MESSAGES.failed);
   }
 
-  const { id } = (await res.json().catch(() => ({}))) as { id?: string };
+  const { id: resendId } = (await res.json().catch(() => ({}))) as { id?: string };
+  await markSent(db, id, resendId);
   console.log('[contact] SENT ' + JSON.stringify({
-    ts: new Date().toISOString(), form: spec.id, id, page: meta.page,
-    ip: ip || '(none)', country: meta.country || '(unknown)',
+    ts: new Date().toISOString(), form: spec.id, id: resendId, row: id,
+    stored, page: meta.page, ip: ip || '(none)',
+    country: meta.country || '(unknown)',
   }));
-  return formPost ? back(meta.page, 'sent', unitTag) : json('sent', 200, MESSAGES.sent, { id });
+  return formPost
+    ? back(meta.page, 'sent', unitTag)
+    : json('sent', 200, MESSAGES.sent, { id: resendId });
 };
 
 /** A GET here is someone opening the URL, not a submission. 405 with an Allow

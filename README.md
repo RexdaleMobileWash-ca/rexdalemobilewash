@@ -17,7 +17,7 @@ it is listed under [Deliberate differences](#deliberate-differences) below.
 | Images | none in the repo — every one comes from `img.rexdalemobilewash.ca` (AD-9) |
 | CSS | the live site's own sheets, vendored, in the live load order, pruned per page, plus `mobile-fixes.css` ([difference 14](#deliberate-differences)) |
 | JS | jQuery 3.7.1 + `nicepage.js` (the menu, carousel, lightbox and parallax need them) |
-| Forms | 15 forms, 2 kinds, both -> `/api/contact/` -> Resend, behind four bot-protection layers |
+| Forms | 15 forms, 2 kinds, both -> `/api/contact/` -> D1 + Resend, behind four bot-protection layers |
 | Analytics | the same GTM container, `GTM-NMTLRJ63`, with gtm4wp's `dataLayer` push |
 | Non-page files | four generated sitemaps + XSL, `robots.txt`, `_headers`, `_redirects` |
 | Payload | ~1443KB → ~1081KB linked per page (25% smaller); see [Pruning](#pruning) |
@@ -752,6 +752,89 @@ The verify harness serves an **empty stub** for `challenges.cloudflare.com`
 rather than aborting the request. Aborting makes it a *failed* request, which the
 render comparison counts — it reported all 15 form pages as DIFF on nothing but
 that, while geometry, element counts and text were identical.
+
+### Submissions are stored in D1
+
+`rexdalemobilewash-forms`, bound as `FORMS_DB`. Schema in
+`migrations/0001_submissions.sql`, applied with
+
+```bash
+npx wrangler d1 execute rexdalemobilewash-forms --remote \
+    --file migrations/0001_submissions.sql
+```
+
+**The ordering is the whole point.** The row is written *before* Resend is
+called and updated with the outcome after. Write it after a successful send and
+the failure mode is the one worth preventing: Resend is down, the visitor is
+told "thank you, it has been sent", and the enquiry exists nowhere. Email is the
+one step here that can fail *after* the visitor has been told it worked.
+
+So the table answers a question the inbox cannot:
+
+```sql
+SELECT * FROM submissions WHERE resend_status <> 'sent';   -- who needs chasing
+```
+
+Proven rather than claimed. The test suite restarts the Worker with a Resend key
+that cannot send and checks all three halves of it:
+
+```
+a failed send still stores the enquiry       502 · rows 20 -> 21 · status "failed"
+the stored row keeps the lead and the reason dana@example.com · "401 {"statusCode":401…"
+the visitor is told it failed, not that it worked
+```
+
+**Nothing here may break the form.** Every database call is wrapped: if D1 is
+unavailable the submission still goes through and is still emailed, and the miss
+is logged loudly. A database outage must not cost a lead — the same rule the
+email path already follows in the other direction.
+
+**Rejected submissions are not stored.** The table is enquiries, not bot
+traffic; writing every bot hit to it would be a free amplifier. Rejections are in
+the Worker log, in one greppable shape.
+
+### …which is what finally makes the hourly rate limit real
+
+The hourly budget is now a `COUNT` over this table rather than a store of its
+own:
+
+```sql
+SELECT COUNT(*) FROM submissions WHERE ip = ? AND form = ? AND created_at > ?
+```
+
+It replaces a KV namespace that was declared, never created, and left the limit
+degraded to the 5-per-minute burst brake. Three things improve at once:
+
+- **It is account-wide and exact.** Cloudflare documents the rate-limiting
+  binding as counted *per data centre* and "intentionally designed to not be
+  used as an accurate accounting system"; a caller spread across colos gets a
+  multiple of it.
+- **It is a true sliding hour**, not a fixed bucket, so nobody gets a fresh
+  allowance by waiting for a clock tick.
+- **There is no second store to keep in step.** The row the submission writes
+  *is* the counter.
+
+It counts what was **stored**, not what was attempted — the right measure, since
+what is being rationed is enquiries reaching the client's inbox, and an attempt
+stopped by Turnstile never got near one. Attempts are still capped by the burst
+limiter. A count that cannot be taken returns `-1` and nothing is limited:
+refusing real enquiries because the database had a bad minute is not a trade
+worth making.
+
+The test proves the limit is the hourly one and not the burst: four submissions
+from one IP give `200 200 200 429` — blocked at the fourth, where the burst
+brake allows five.
+
+### Reading the submissions
+
+```bash
+npx wrangler d1 execute rexdalemobilewash-forms --remote \
+  --command "SELECT created_at, form, name, email, subject, resend_status
+             FROM submissions ORDER BY created_at DESC LIMIT 20"
+```
+
+`handled_at` is there and never set by the code — it is for whoever works the
+list, so the table is a worklist rather than only a log.
 
 ### The API key is a Worker secret
 

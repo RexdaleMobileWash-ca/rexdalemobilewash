@@ -25,8 +25,8 @@
  *     TURNSTILE_SECRET = "1x0000000000000000000000000000000AA"
  *     CONTACT_TO = "delivered@resend.dev"    Resend's own sink, not the client
  */
-import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -149,11 +149,10 @@ const good = (form) => form === 'cf7'
 
 /* Every case gets its own client IP.
  *
- * The hourly limit is 3 per IP and it counts every submission that reaches it,
- * not just the ones that send — so a suite sharing one IP starts rate-limiting
- * its own later cases, and the failure reads exactly like a bug in the code
- * under test. Learned the hard way: the first run of this file reported "valid
- * submission" as a 429. */
+ * The hourly limit is 3 stored submissions per IP per form, counted in D1 — so a
+ * suite sharing one IP starts rate-limiting its own later cases, and the failure
+ * reads exactly like a bug in the code under test. Learned the hard way: the
+ * first run of this file reported "valid submission" as a 429. */
 let ipSeq = 0;
 const nextIp = () => `203.0.113.${(ipSeq++ % 200) + 20}`;
 
@@ -172,6 +171,51 @@ async function post(body, extraHeaders = {}) {
   });
   const json = await res.json().catch(() => ({}));
   return { status: res.status, json };
+}
+
+/** Query the LOCAL D1 the running `wrangler dev --local` is using — never the
+ *  remote one, because a test run must not write rows into the real database.
+ *
+ *  Read straight off miniflare's sqlite file, read-only, rather than shelling out
+ *  to `wrangler d1 execute` per query. Spawning wrangler repeatedly against the
+ *  file the dev server holds open took seconds each time and killed the server
+ *  mid-run — the harness reported "fetch failed" halfway through, which reads
+ *  like the Worker crashed and was the test standing on its own foot. */
+const D1_DIR = join(root, 'dist', 'server', '.wrangler', 'state', 'v3', 'd1',
+  'miniflare-D1DatabaseObject');
+
+function d1(sql) {
+  const file = existsSync(D1_DIR)
+    ? readdirSync(D1_DIR).find((f) => f.endsWith('.sqlite') && f !== 'metadata.sqlite')
+    : null;
+  if (!file) return [];
+  // `file:…?mode=ro` so the running Worker's writes are never disturbed, and
+  // the WAL is read as the server left it.
+  const out = spawnSync('python3', ['-c', `
+import sqlite3, json, sys
+c = sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True)
+c.row_factory = sqlite3.Row
+print(json.dumps([dict(r) for r in c.execute(sys.argv[2])]))
+`, join(D1_DIR, file), sql], { encoding: 'utf8' });
+  try {
+    return JSON.parse(out.stdout);
+  } catch {
+    return [];
+  }
+}
+const rowCount = () => Number(d1('SELECT COUNT(*) AS n FROM submissions')[0]?.n ?? 0);
+
+/** Wait until the Worker's log stops growing, so a send logged by the PREVIOUS
+ *  case is not counted against this one. Without it "sends exactly once" reads 2
+ *  and looks like a duplicate-send bug in the route. */
+async function settle() {
+  let last = -1;
+  for (let i = 0; i < 12; i++) {
+    const n = sendCount();
+    if (n === last) return;
+    last = n;
+    await sleep(250);
+  }
 }
 
 const results = [];
@@ -252,13 +296,56 @@ async function run() {
 
   // -- the valid submission: works, and sends EXACTLY once
   for (const form of ['cf7', 'nicepage']) {
+    await settle();
     const before = sendCount();
     const r = await post(good(form));
-    await sleep(600);
+    await settle();
     const sent = sendCount() - before;
     check(`valid ${form} submission sends exactly once`,
       r.status === 200 && r.json.status === 'sent' && !!r.json.id && sent === 1,
       `${r.status} · id ${String(r.json.id).slice(0, 8)}… · sends: ${sent}`);
+  }
+
+  // -- the database: one row per submission, written before the send
+  {
+    await settle();
+    const before = rowCount();
+    const r = await post(good('cf7'));
+    await settle();
+    const rows = d1("SELECT form, page, name, email, subject, resend_status, resend_id, ip, country " +
+      "FROM submissions ORDER BY created_at DESC LIMIT 1");
+    const row = rows[0] || {};
+    check('a submission writes exactly one row',
+      r.status === 200 && rowCount() === before + 1,
+      `rows ${before} -> ${rowCount()}`);
+    check('the row records form, page, sender and outcome',
+      row.form === 'cf7' && row.page === '/contact-us/' &&
+      row.email === 'dana@example.com' && row.resend_status === 'sent' && !!row.resend_id,
+      `${row.form} · ${row.page} · ${row.resend_status} · id ${String(row.resend_id).slice(0, 8)}…`);
+    check('the row records where it came from',
+      !!row.ip, `ip ${row.ip}`);
+  }
+  {
+    // The Nicepage form has no subject field and its `message` is an Address.
+    const r = await post(good('nicepage'));
+    await sleep(700);
+    const row = d1("SELECT form, subject, message FROM submissions " +
+      "WHERE form='nicepage' ORDER BY created_at DESC LIMIT 1")[0] || {};
+    check('the nicepage row keeps its own shape',
+      row.form === 'nicepage' && row.subject === 'Residential enquiry' &&
+      String(row.message).includes('Anywhere'),
+      `subject "${row.subject}" · message "${String(row.message).slice(0, 24)}…"`);
+  }
+  {
+    // A rejected submission must NOT be stored: the table is enquiries, not
+    // bot traffic, and writing every bot hit to it is a free amplifier.
+    const before = rowCount();
+    const body = { ...good('cf7') };
+    delete body['cf-turnstile-response'];
+    await post(body);
+    await sleep(400);
+    check('a rejected submission writes no row',
+      rowCount() === before, `rows unchanged at ${before}`);
   }
 
   // -- layer 4: hourly rate limit, from a fresh IP so the earlier cases do not
@@ -307,6 +394,28 @@ async function run() {
     check('valid-looking token refused when siteverify says no',
       r.status === 403 && sendCount() === beforePhase2,
       `${r.status} · nothing sent · "${(r.json.message || '').slice(0, 46)}…"`);
+  }
+
+  // -- phase 3: the reason the database exists. With Resend refusing every call,
+  //    the visitor still gets an honest failure AND the enquiry is still on
+  //    disk — which is the case that email alone cannot survive.
+  console.log('\n  restarting with a Resend key that cannot send…');
+  await stopDev();
+  await startDev({ RESEND_API_KEY: 're_broken_key_for_testing_only_000000' });
+  {
+    const before = rowCount();
+    const r = await post(good('cf7'), { 'CF-Connecting-IP': '198.51.100.250' });
+    await sleep(1200);
+    const row = d1("SELECT resend_status, resend_error, name, email FROM submissions " +
+      'ORDER BY created_at DESC LIMIT 1')[0] || {};
+    check('a failed send still stores the enquiry',
+      r.status === 502 && rowCount() === before + 1 && row.resend_status === 'failed',
+      `${r.status} · rows ${before} -> ${rowCount()} · status "${row.resend_status}"`);
+    check('the stored row keeps the lead and the reason',
+      row.email === 'dana@example.com' && !!row.resend_error,
+      `${row.email} · "${String(row.resend_error).slice(0, 40)}…"`);
+    check('the visitor is told it failed, not that it worked',
+      r.json.status === 'failed', `"${(r.json.message || '').slice(0, 44)}…"`);
   }
 
   console.log('');

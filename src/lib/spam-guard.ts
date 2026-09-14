@@ -239,34 +239,30 @@ export async function checkEmailDomain(email: string): Promise<Verdict> {
 export interface RateLimitStores {
   /** the Workers rate-limiting binding: the short burst brake */
   burst?: { limit(o: { key: string }): Promise<{ success: boolean }> };
-  /** a KV namespace: the hourly budget the binding cannot express */
-  hourly?: {
-    get(key: string): Promise<string | null>;
-    put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>;
-  };
+  /** how many submissions this sender has stored in the last hour, or -1 when
+   *  the count could not be taken. Backed by D1 — see src/lib/submissions.ts. */
+  hourlyCount?: () => Promise<number>;
 }
 
 export const HOURLY_LIMIT = 3;
-const HOUR_SECONDS = 3600;
 
 /**
- * Two windows, because one binding cannot do both.
+ * Two windows, because one store cannot do both.
  *
  * The Workers rate-limiting binding only accepts a period of 10 or 60 seconds,
- * so "3 per hour" is not expressible with it. It stays as the burst brake and KV
- * carries the hourly budget, keyed per form so a visitor who uses the contact
- * form has not spent the residential form's allowance.
+ * so "3 per hour" is not expressible with it. It stays as the burst brake; the
+ * hourly budget is a COUNT over the submissions table, per form, so a visitor
+ * who used the contact form has not spent the residential form's allowance.
  *
- * Know what the binding is: Cloudflare documents it as counted PER DATA CENTRE
- * and "intentionally designed to not be used as an accurate accounting system".
- * A caller spread across colos gets a multiple of it. KV is account-global, so
- * the hourly number is the one that actually holds — at the cost of being
- * eventually consistent, which can let a burst of simultaneous requests through
- * before the counter catches up.
+ * Know what each one is. Cloudflare documents the binding as counted PER DATA
+ * CENTRE and "intentionally designed to not be used as an accurate accounting
+ * system" — a caller spread across colos gets a multiple of it. The D1 count is
+ * account-wide and exact, and it is a count of what was actually STORED, which
+ * is the right measure here: what is being rationed is enquiries reaching the
+ * client's inbox, and an attempt stopped by Turnstile never got near one.
  *
- * If KV is not bound, the hourly limit cannot be enforced. That degrades to the
- * burst limit alone and says so in the log every time, rather than quietly
- * behaving as though the limit were there.
+ * A count that cannot be taken returns -1 and nothing is limited. Refusing real
+ * enquiries because the database had a bad minute is not a trade worth making.
  */
 export async function checkRateLimit(
   stores: RateLimitStores,
@@ -287,28 +283,21 @@ export async function checkRateLimit(
     }
   }
 
-  if (!stores.hourly) {
-    console.error('[spam-guard] no KV binding for the hourly rate limit — running on the ' +
-      'burst limiter alone. Create the namespace and bind it as FORM_RATE_LIMIT.');
+  if (!stores.hourlyCount) {
+    console.error('[spam-guard] no hourly counter — running on the burst limiter alone. ' +
+      'Is FORMS_DB bound?');
     return OK;
   }
 
-  // A fixed hour bucket rather than a sliding window: one read and at most one
-  // write per submission, where a sliding window needs a stored list per IP.
-  const bucket = Math.floor(Date.now() / (HOUR_SECONDS * 1000));
-  const key = `rl:${formId}:${ip}:${bucket}`;
-  try {
-    const count = Number((await stores.hourly.get(key)) || '0');
-    if (count >= HOURLY_LIMIT) {
-      return bad('rate-limit-hourly',
-        'You have sent several messages recently. Please give us a little time to reply, ' +
-        'or call us on (416) 244-6497.', 429);
-    }
-    // TTL is two buckets' worth so a key written at :59 still expires cleanly.
-    await stores.hourly.put(key, String(count + 1), { expirationTtl: HOUR_SECONDS * 2 });
-  } catch (e) {
-    console.error('[spam-guard] hourly rate-limit store failed —', (e as Error).message,
-      '— allowing the submission through.');
+  // A true sliding hour, not a fixed bucket: the count is a query over the last
+  // 3,600,000ms, so nobody gets a fresh allowance by waiting for a clock tick.
+  // Nothing is written here — the row the submission itself writes IS the
+  // counter, so there is no second store to keep in step.
+  const count = await stores.hourlyCount();
+  if (count >= 0 && count >= HOURLY_LIMIT) {
+    return bad(`rate-limit-hourly:${count}`,
+      'You have sent several messages recently. Please give us a little time to reply, ' +
+      'or call us on (416) 244-6497.', 429);
   }
   return OK;
 }
