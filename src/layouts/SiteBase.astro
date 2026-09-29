@@ -75,6 +75,17 @@ const GTM_ID = 'GTM-NMTLRJ63';
 // SECRET half of the pair (TURNSTILE_SECRET) is the opposite — a Worker secret,
 // read at runtime in the API route, never a build variable.
 const TURNSTILE_SITEKEY = import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '';
+
+// The four pages whose carousel's first, already-active slide
+// (u-active u-carousel-item) is the CSS background-image
+// /2020/12/slidehomepage1-scaled.jpg — see src/html/*.content.html. A CSS
+// background-image is not discovered by the browser's preload scanner until
+// the stylesheet that names it is parsed, which on these pages is this LCP
+// element. Preloading it, and only it, closes that gap without touching any
+// other page's markup or any other slide's image.
+const HERO_SLIDE_1_SLUGS = new Set(['home', 'about-us', 'contact-us', 'garbage-rooms']);
+const HERO_SLIDE_1 = 'https://img.rexdalemobilewash.ca/2020/12/slidehomepage1-scaled.jpg';
+const preloadHero = HERO_SLIDE_1_SLUGS.has(slug);
 ---
 
 <!doctype html>
@@ -105,6 +116,10 @@ const TURNSTILE_SITEKEY = import.meta.env.PUBLIC_TURNSTILE_SITEKEY || '';
         <meta property="og:image:height" content={String(share.height)} />
         <meta property="og:image:alt" content={share.alt} />
       </>
+    )}
+
+    {preloadHero && (
+      <link rel="preload" as="image" href={HERO_SLIDE_1} fetchpriority="high" />
     )}
 
     <link rel="icon" href={FAVICON} sizes="32x32" />
