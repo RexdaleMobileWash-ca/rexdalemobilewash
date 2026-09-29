@@ -48,7 +48,7 @@ run, while every page stays a prerendered file.
 
 ## Deployment
 
-**Live at https://rexdalemobilewash.ash-47a.workers.dev**
+**Live at https://astro.rexdalemobilewash.ca** (noindex)
 
 Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
 `rexdalemobilewash`.
@@ -81,8 +81,7 @@ Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
 > honeypot, the dwell-time stamp, the MX lookup and the 5-per-60s burst limiter
 > are all live, so staging is still better protected than the build it
 > replaced, which had none of them. To make it real: create the widget
-> (Managed; hostnames `rexdalemobilewash.ca`, `www.`, `staging.`, and the
-> `workers.dev` host), then
+> (Managed; hostnames `rexdalemobilewash.ca`, `www.`, and `astro.`), then
 > `PUBLIC_TURNSTILE_SITEKEY=<real> npm run build`,
 > `npx wrangler secret put TURNSTILE_SECRET`, and redeploy. **Do this before
 > gate 13.**
@@ -92,10 +91,9 @@ worker .......................... rexdalemobilewash
 repo ............................ RexdaleMobileWash-ca/rexdalemobilewash @ main
 build ........................... npm run build   deploy: npx wrangler deploy
 review hostname ................. astro.rexdalemobilewash.ca  (noindex)
-                                  rexdalemobilewash.ash-47a.workers.dev
 cutover hostname ................ not attached — that is gate 13
 zone ............................ rexdalemobilewash.ca, ACTIVE on Cloudflare
-workers.dev ..................... enabled (public, not access-gated)
+workers.dev ..................... disabled ("workers_dev": false in wrangler.jsonc)
 preview URLs .................... disabled
 ```
 
@@ -181,12 +179,12 @@ Remove it by deleting the rule in that zone's
 `http_response_headers_transform` entrypoint ruleset — nothing in the repo
 depends on it.
 
-`rexdalemobilewash.ash-47a.workers.dev` still answers as well: an unlisted but
-ungated copy, and unlike the staging hostname it carries no `noindex`. Close it
-by setting `"workers_dev": false` in `wrangler.jsonc` and rebuilding, now that a
-real hostname exists — or put Cloudflare Access in front of both (needs Zero
-Trust onboarding on this account; there is no team domain or identity provider
-yet).
+`rexdalemobilewash.ash-47a.workers.dev` is now closed: `wrangler.jsonc` sets
+`"workers_dev": false`, now that `astro.rexdalemobilewash.ca` exists as the
+`noindex`-tagged review hostname. Reviewers and verify scripts should point at
+`astro.rexdalemobilewash.ca` going forward; putting Cloudflare Access in front
+of it too remains optional (needs Zero Trust onboarding on this account; there
+is no team domain or identity provider yet).
 
 ### Two things that will bite
 
@@ -196,10 +194,11 @@ what `wrangler deploy` reads. Edit the config and deploy without rebuilding and
 you ship the previous build's settings. `workers_dev` and `preview_urls` default
 to **enabled**, so a stale config publishes the site.
 
-**Workers Builds has overridden those flags once**, re-enabling `workers.dev`
-against `"workers_dev": false`. A later build did not repeat it, so it looks like
-one-time behaviour on the first build after connecting the repo — but if the site
-ever needs to be genuinely private, verify after each deploy:
+**Workers Builds has overridden those flags once before**, re-enabling
+`workers.dev` against a `"workers_dev": false` in the repo at the time. A later
+build did not repeat it, so it looked like one-time behaviour on the first build
+after connecting the repo — but now that `workers_dev` is deliberately `false`
+again, verify it stays that way after each deploy:
 
 ```bash
 curl -s -H "Authorization: Bearer $CF_API_TOKEN" \

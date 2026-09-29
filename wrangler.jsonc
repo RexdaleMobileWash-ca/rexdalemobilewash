@@ -3,19 +3,21 @@
   "name": "rexdalemobilewash",
   "compatibility_date": "2026-09-03",
   "compatibility_flags": ["nodejs_compat"],
-  // The review hostname is the workers.dev URL, deliberately public for now:
-  //   https://rexdalemobilewash.ash-47a.workers.dev
-  // It is an unlisted copy of the client's site on the open internet. Nothing
-  // links to it and the real domain is untouched, but it is not access-gated —
-  // swap it for a real hostname (or put Access in front) before this matters.
-  "workers_dev": true,
+  // The workers.dev URL (https://rexdalemobilewash.ash-47a.workers.dev) was an
+  // unlisted, ungated copy of the client's site kept open while no real review
+  // hostname existed. astro.rexdalemobilewash.ca (below) now carries that role
+  // and is `noindex`-tagged in the zone, so the workers.dev host is closed here.
+  // Reviewers should use https://astro.rexdalemobilewash.ca.
+  "workers_dev": false,
   // Branch builds would each publish another URL. Off.
   "preview_urls": false,
   //
   // Both are resolved at BUILD time by @astrojs/cloudflare into
   // dist/client/wrangler.json, and THAT is what `wrangler deploy` reads — so
   // always rebuild before deploying, or the deploy uses the previous build's
-  // copy. Workers Builds has also overridden these once on its own. Check with:
+  // copy. Workers Builds has also overridden these once on its own (see
+  // README's "Two things that will bite"). Verify workers.dev stays closed
+  // after each deploy with:
   //   GET /accounts/{id}/workers/scripts/rexdalemobilewash/subdomain
   // The review hostname on the client's own zone. Declared here rather than
   // attached by hand so it survives every future `wrangler deploy` and is
