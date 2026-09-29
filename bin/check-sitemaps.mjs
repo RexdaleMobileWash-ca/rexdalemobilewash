@@ -29,7 +29,12 @@ const served = new Set();
 const noindex = new Set();
 for (const f of walk(dist)) {
   if (!f.endsWith('index.html')) continue;
-  const route = '/' + f.slice(dist.length + 1).replace(/index\.html$/, '');
+  // join() (in walk(), above) uses the platform separator, so on win32 this
+  // is backslash-joined; every route below is compared against URLs, which
+  // are always forward-slash, so it has to be normalized here or every route
+  // fails to match its sitemap entry — passing on Linux, failing on Windows,
+  // for no reason a person reading the mismatch would guess.
+  const route = '/' + f.slice(dist.length + 1).replace(/\\/g, '/').replace(/index\.html$/, '');
   served.add(route);
   const robots = readFileSync(f, 'utf8').match(/<meta name="robots" content="([^"]*)"/);
   if (robots && /noindex/i.test(robots[1])) noindex.add(route);
