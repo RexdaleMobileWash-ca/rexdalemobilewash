@@ -1,0 +1,48 @@
+name: Agrici SEO crawl
+# Read-only crawl of the URLs in .github/seo-crawl/config.json using the
+# pinned AgriciDaniel/claude-seo scripts. Uses no secrets. Commits evidence to
+# docs/seo-ppc/<site_id>/ on the triggering branch.
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/seo-crawl/config.json']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: seo-crawl-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Read config
+        id: cfg
+        run: |
+          echo "site_id=$(jq -r .site_id .github/seo-crawl/config.json)" >> "$GITHUB_OUTPUT"
+          echo "url=$(jq -r '.urls | join(",")' .github/seo-crawl/config.json)" >> "$GITHUB_OUTPUT"
+          echo "pin=$(jq -r .agrici_commit .github/seo-crawl/config.json)" >> "$GITHUB_OUTPUT"
+      - name: Fetch pinned Agrici SEO
+        run: |
+          git clone https://github.com/AgriciDaniel/claude-seo "$RUNNER_TEMP/claude-seo"
+          git -C "$RUNNER_TEMP/claude-seo" checkout --detach "${{ steps.cfg.outputs.pin }}"
+          test "$(git -C "$RUNNER_TEMP/claude-seo" rev-parse HEAD)" = "${{ steps.cfg.outputs.pin }}"
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q -r "$RUNNER_TEMP/claude-seo/requirements.txt"
+      - name: Crawl
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" .github/seo-crawl/crawl.py \
+            "$RUNNER_TEMP/claude-seo" "${{ steps.cfg.outputs.site_id }}" \
+            "${{ steps.cfg.outputs.url }}" "docs/seo-ppc/${{ steps.cfg.outputs.site_id }}"
+      - name: Commit evidence
+        run: |
+          git config user.name "seo-crawl[bot]"
+          git config user.email "seo-crawl@users.noreply.github.com"
+          git add "docs/seo-ppc/${{ steps.cfg.outputs.site_id }}"
+          git commit -m "docs: Agrici SEO crawl evidence for site ${{ steps.cfg.outputs.site_id }}" || exit 0
+          git push
