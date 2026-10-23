@@ -192,10 +192,14 @@ export function shareImage(
 /**
  * Descriptions the live site is missing or has wrong.
  *
- * Only four pages are touched, and each for a stated reason. Every other page
- * keeps Yoast's description exactly as written.
+ * Reviewed overrides describe visible page content; other pages retain the
+ * ported description. The SEO/PPC pass also corrects length and spelling.
  */
 const DESCRIPTIONS: Record<string, string> = {
+  // SEO-pro review 2026-10-23: concise summaries of visible page services/contact facts.
+  buildings: 'Pressure washing and power scrubbing for building interiors and exteriors. Contact Rexdale Mobile Wash for commercial and industrial cleaning in the GTA.',
+  'contact-us': 'Contact Rexdale Mobile Wash for mobile pressure washing and industrial cleaning in the GTA. Call 416-244-6497 or use the enquiry form.',
+  'parking-underground': 'Parking garage and underground cleaning in the GTA with power scrubbing and sweeping. Contact Rexdale Mobile Wash to discuss your cleaning needs.',
   // The live page carries /de-icing-service/'s description word for word — a
   // copy-paste in Yoast that leaves two pages competing on the same snippet
   // while saying nothing about bulk water. Replaced with this page's own copy.
@@ -336,11 +340,9 @@ const addType = (n: Node, extra: string) => {
 /**
  * The ported Yoast graph, enriched.
  *
- * Purely additive, and deliberately so: every node and every property the live
- * site emits survives byte-for-byte, including the `SearchAction` that points
- * at a WordPress search this site does not have (README: "Known issues carried
- * over" — changing that is the client's call, not this file's). Only keys that
- * are absent are filled in.
+ * Preserve the ported business facts and enrich missing service information.
+ * Authorized SEO/PPC corrections align WebPage descriptions and remove only
+ * the retired WordPress SearchAction; all unrelated actions stay intact.
  *
  * What it adds:
  *
@@ -389,6 +391,20 @@ export function enrichJsonLd(
 
   const webpage = graph.find((n: Node) => typesOf(n).includes('WebPage')) as Node | undefined;
   if (webpage && PAGE_TYPE[slug]) addType(webpage, PAGE_TYPE[slug]);
+  if (webpage && page.description) webpage.description = page.description;
+
+  // SEO-pro review: do not advertise the retired WordPress search endpoint.
+  // Keep other actions and all business facts unchanged.
+  for (const node of graph as Node[]) {
+    if (!typesOf(node).includes('WebSite') || !Array.isArray(node.potentialAction)) continue;
+    const actions = (node.potentialAction as Node[]).filter((action) => {
+      const target = action.target as Node | string | undefined;
+      const template = typeof target === 'string' ? target : target?.urlTemplate;
+      return !(typesOf(action).includes('SearchAction') && typeof template === 'string' && template.includes('?s={search_term_string}'));
+    });
+    if (actions.length) node.potentialAction = actions;
+    else delete node.potentialAction;
+  }
 
   const service = SERVICES[slug];
   if (service && org) {
