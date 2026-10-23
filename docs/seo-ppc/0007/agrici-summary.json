@@ -1,0 +1,37 @@
+{
+ "agrici_commit": "6be93f45064ffbadced572b5d5c95f55fd263af0",
+ "agrici_scripts_run": [
+  "sitemap_discovery.py",
+  "url_safety.safe_requests_get",
+  "parse_html.parse_html"
+ ],
+ "blocked_by_robots": 0,
+ "fetch_errors": 0,
+ "findings": {
+  "h1_not_exactly_one": 29,
+  "images_missing_alt": 130,
+  "missing_canonical": 3,
+  "missing_meta_description": 6,
+  "missing_title": 0,
+  "noindex_pages": 3,
+  "pages_without_schema": 3
+ },
+ "frontier_empty": true,
+ "html_pages": 35,
+ "non_200": 1,
+ "pages_fetched": 36,
+ "pages_sha256": "eae5b7f8fc849bc66b32f5ecbcdcd0e6e4f946826bccdb3259766fe5615e8a34",
+ "robots_status": {
+  "astro.rexdalemobilewash.ca": 200,
+  "www.rexdalemobilewash.ca": 200
+ },
+ "run_at": "2026-10-23T21:17:13.208668+00:00",
+ "safety_ceiling": 20000,
+ "site_id": "0007",
+ "sitemap_urls": 18,
+ "start_urls": [
+  "https://astro.rexdalemobilewash.ca/",
+  "https://www.rexdalemobilewash.ca/"
+ ],
+ "urls_discovered": 36
+}
