@@ -48,10 +48,44 @@ run, while every page stays a prerendered file.
 
 ## Deployment
 
-**Live at https://astro.rexdalemobilewash.ca** (noindex)
+**In production at https://www.rexdalemobilewash.ca** since 2026-11-07 (gate 13).
+The review copy stays at https://astro.rexdalemobilewash.ca (noindex).
 
 Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
 `rexdalemobilewash`.
+
+### Production cutover (gate 13) — and the rollback
+
+```
+custom domains ........... www.rexdalemobilewash.ca, rexdalemobilewash.ca, astro.
+canonical ................ www   (apex 301s to it: zone Single Redirect rule)
+always use https ......... on    (was off)
+ssl mode ................. full  (unchanged; AD-2, for img.)
+client MX + TXT .......... unchanged   (DNS 36 records in, 36 out, two swapped)
+form spam check .......... real Turnstile widget "Rexdale Mobile Wash forms",
+                           sitekey 0x4AAAAAAF30C4WeTravVxUs; TURNSTILE_SECRET
+                           is a Worker secret
+```
+
+**The records the cutover deleted — this is the rollback:**
+
+```
+A      rexdalemobilewash.ca        192.124.249.17         proxied   (Sucuri, in front of WordPress)
+CNAME  www.rexdalemobilewash.ca    rexdalemobilewash.ca   proxied
+```
+
+To go back to WordPress: remove `www.` and the apex from `routes` in
+`wrangler.jsonc` and deploy (or detach both Custom Domains in the dashboard),
+then re-create those two records. The WordPress site is still running behind
+Sucuri until gate 20 switches it off.
+
+**`routes` in `wrangler.jsonc` now carries all three hostnames, and must.**
+wrangler reconciles `routes` against the attached Custom Domains, so deploying a
+config that lists only `astro.` detaches the production site.
+
+**Build with the real sitekey.** `PUBLIC_TURNSTILE_SITEKEY=0x4AAAAAAF30C4WeTravVxUs`
+in `.env` (or as a Workers Builds build variable). A build with the test key
+`1x00000000000000000000AA` against the real secret rejects every submission.
 
 > **Workers Builds is connected but is not firing.** Pushes to `main` on
 > 2026-09-04 produced no build: Cloudflare's last automatic deployment is
@@ -63,6 +97,10 @@ Cloudflare Workers, account `47a82355…` (Ash@brandingcentres.com), Worker
 > **a push to `main` does not deploy**; deploy with `npm run build && npx
 > wrangler deploy` and re-run the checks against the deployed host.
 
+> **Resolved 2026-11-07, before gate 13:** a real widget now exists (see
+> [Production cutover](#production-cutover-gate-13--and-the-rollback)). Kept
+> below as the history of why staging ran the test keys.
+>
 > **⚠ Staging is running Turnstile's ALWAYS-PASSES TEST KEYS, and must not go
 > to production that way.** The deploy on 2026-09-09 was the first to carry the
 > bot-protection commit, and no Turnstile widget exists on the account yet —
@@ -91,7 +129,7 @@ worker .......................... rexdalemobilewash
 repo ............................ RexdaleMobileWash-ca/rexdalemobilewash @ main
 build ........................... npm run build   deploy: npx wrangler deploy
 review hostname ................. astro.rexdalemobilewash.ca  (noindex)
-cutover hostname ................ not attached — that is gate 13
+production hostname ............. www.rexdalemobilewash.ca (apex 301s to it)
 zone ............................ rexdalemobilewash.ca, ACTIVE on Cloudflare
 workers.dev ..................... disabled ("workers_dev": false in wrangler.jsonc)
 preview URLs .................... disabled
@@ -207,10 +245,11 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
 
 ### Still to do
 
-1. Gate 13 attaches the real domain, and with it
-   the zone's *Always Use HTTPS* setting; `http://` is not upgraded today.
-2. Gate 14 publishes the old-URL redirects. See
-   [Old addresses that do not resolve yet](#old-addresses-that-do-not-resolve-yet--gate-14).
+1. ~~Gate 13~~ done 2026-11-07; *Always Use HTTPS* is on.
+2. ~~Gate 14~~ done 2026-11-07, except the `/?p=` shortlinks. See
+   [Old addresses](#old-addresses--gate-14).
+3. Gate 19 (`wp-19-check-nothing-is-broken`), then gate 20 switches WordPress off.
+4. Workers Builds still does not fire on push; deploy by hand.
 
 ## Images
 
@@ -1888,31 +1927,37 @@ Faithfully reproduced, not introduced here:
 
 ## Not done here
 
-- No production hostname. That is gate 13.
+- `/?p=<id>` shortlinks (see below).
 
-### Old addresses that do not resolve yet — gate 14
+### Old addresses — gate 14
 
 `public/_redirects` covers only what the live site itself redirects: `/favicon.ico`
-and the no-trailing-slash form of every route. Everything below still 404s and is
-gate 14's job (`wp-18-keep-old-links-working`), published as Cloudflare rules
-rather than from this repo:
+and the no-trailing-slash form of every route. The WordPress-only addresses are
+handled at the Cloudflare edge, so they survive WordPress being switched off.
+They are zone Single Redirect rules (`http_request_dynamic_redirect` entrypoint),
+all 301, all scoped to `www.` and the apex so `lp.`, `img.` and `astro.` are
+untouched, published 2026-11-07:
 
 ```
-/wp-content/uploads/*        84 media URLs; one prefix rewrite to /images/
-/?p=<id>                     the WordPress shortlinks; live 301s, here the
-                             query string is ignored and / is served
-/feed/, /comments/feed/      the two RSS feeds
-/wp-json/*                   52 URLs, including the oembed endpoints
-/index.php, date archives, blog pagination, /xmlrpc.php
-mixed-case paths             /What-We-Do/ is 200 on WordPress, 404 here —
-                             Cloudflare static assets are case-sensitive
+1  /wp-content/uploads/*       -> https://img.rexdalemobilewash.ca/<rest>  (query kept)
+2  /feed/, /comments/feed/, /index.php, /page/*, /20* (date archives),
+   /category/*, /tag/*         -> https://www.rexdalemobilewash.ca/
+3  mixed-case page paths       -> the lowercase path   (/What-We-Do/ -> /what-we-do/)
+4  apex, any path              -> the same path on www
 ```
 
-One more that no redirect can fix from this repo: **`http://` is not upgraded**.
-The live site 301s `http://` to `https://`; the `workers.dev` hostname answers
-plain HTTP with 200. That is the zone's *Always Use HTTPS* setting, so it lands
-with the real hostname at gate 13. The `upgrade-insecure-requests` CSP in
-`public/_headers` covers sub-resources in the meantime, not the document itself.
+Rule 1 is `substring(path, 19)`, not 20: `/wp-content/uploads/` is 20
+characters, so 20 drops the slash and produces `img.rexdalemobilewash.ca2023/…`.
+Rule 3 matches only the 17 known page slugs and excludes the lowercase form
+itself, so it cannot loop or touch asset paths.
+
+**Not redirected, deliberately:** `/wp-json/*`, `/xmlrpc.php`, `/wp-login.php` and
+`/wp-admin/` are application endpoints, not pages, and 404.
+
+**Not redirected, a known gap: the `/?p=<id>` shortlinks.** Each one needs its own
+rule (the target cannot be computed from the id), and the Free plan allows 10
+Single Redirect rules, 4 of which are used. They land on the home page with a
+200 rather than a 404. Nothing on the site links to them.
 
 ## Pruning
 

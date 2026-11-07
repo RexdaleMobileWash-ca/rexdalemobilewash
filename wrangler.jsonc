@@ -24,10 +24,13 @@
   // visible in the repo; Cloudflare creates and owns the proxied DNS record for
   // it, so there is no separate record to keep in sync.
   //
-  // This is NOT the cutover. The apex and www still point at the WordPress
-  // server and the client's Microsoft 365 mail records are untouched — a
-  // subdomain route cannot affect either. Pointing the real domain here is
-  // gate 13 (wp-17-point-domain-at-new-site).
+  // PRODUCTION (gate 13, cut over 2026-11-07): www.rexdalemobilewash.ca and the
+  // apex are Custom Domains on this Worker too. They MUST stay listed here:
+  // wrangler reconciles `routes` against the attached Custom Domains, so a
+  // deploy from a config without them DETACHES the client's live site.
+  // www is canonical; the apex answers only to be 301'd to www by a zone
+  // Single Redirect rule ("Apex to www") that runs before the Worker. The
+  // pre-cutover records — the rollback — are in README "Production cutover".
   //
   // astro.rexdalemobilewash.ca serves a complete copy of the client's site on
   // their own brand domain, so it carries `X-Robots-Tag: noindex, nofollow` from
@@ -44,7 +47,9 @@
   // matches on `http.host` — repoint that expression in the same change or the
   // renamed host serves a full copy of the client's site with no `noindex`.
   "routes": [
-    { "pattern": "astro.rexdalemobilewash.ca", "custom_domain": true }
+    { "pattern": "astro.rexdalemobilewash.ca", "custom_domain": true },
+    { "pattern": "www.rexdalemobilewash.ca", "custom_domain": true },
+    { "pattern": "rexdalemobilewash.ca", "custom_domain": true }
   ],
   // Abuse protection for /api/contact (gate 11). A form with no limit becomes a
   // spam relay, and the two obvious alternatives were both unavailable here: a
