@@ -7,7 +7,11 @@ _redirects carries only what the LIVE SITE itself redirects:
   /favicon.ico
       WordPress's Site Icon feature answers it with a 302 to the uploaded icon.
       Without a rule the port returns 404. Every page already declares
-      <link rel="icon">, so this only covers the bare request.
+      <link rel="icon">, so this only covers the bare request. Served as a 301,
+      not WordPress's 302: gate 15 fails any temporary redirect.
+
+  /e-landing-page-sitemap.xml
+      Listed in the old Yoast sitemap index (empty). 301 to the new index.
 
   the no-trailing-slash form of every route
       `html_handling: auto-trailing-slash` already redirects /what-we-do to
@@ -106,14 +110,17 @@ def main():
            '# Only the redirects the live WordPress site performs itself. The old-URL',
            '# redirect set is gate 14 (wp-18-keep-old-links-working), published as',
            '# Cloudflare rules.', '',
-           '# WordPress answers /favicon.ico with a 302 to the Site Icon.',
-           f'/favicon.ico  {FAVICON}  302', '',
+           '# WordPress answers /favicon.ico with a 302 to the Site Icon. 301 here:',
+           '# gate 15 fails any temporary redirect, and the icon file never moves.',
+           f'/favicon.ico  {FAVICON}  301', '',
+           '# The old sitemap index listed an empty Elementor landing-page sitemap.',
+           '/e-landing-page-sitemap.xml  /sitemap_index.xml  301', '',
            "# Trailing slash: the live site answers 301 here. Cloudflare's own",
            '# auto-trailing-slash handling answers 307, which passes no ranking signal.']
     red += [f'{u.rstrip("/")}  {u}  301' for u in slashed]
     open(os.path.join(_ROOT, 'public', '_redirects'), 'w', encoding='utf-8').write(
         '\n'.join(red) + '\n')
-    print(f"  public/_redirects   1 favicon rule + {len(slashed)} trailing-slash rules")
+    print(f"  public/_redirects   favicon + old sitemap + {len(slashed)} trailing-slash rules")
 
     hdr = [GENERATED, HEADERS_STATIC.rstrip(), '',
            '# Live sends `content-type: text/html; charset=UTF-8`; the asset runtime',

@@ -157,7 +157,7 @@ against the deployed pages rather than `dist/`:
 image hosts referenced by the 18 deployed pages
   831 references, all on img.rexdalemobilewash.ca, 0 anywhere else
   223 distinct addresses, 223 served as an image, 0 failures
-/favicon.ico ..................... 302 -> https://img.rexdalemobilewash.ca/…
+/favicon.ico ..................... 301 -> https://img.rexdalemobilewash.ca/…   (302 until gate 15)
 ```
 
 The single 404 is `/wp-login.php` on `/blog-post-title/` — the "log in to leave a
@@ -248,8 +248,13 @@ curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
 1. ~~Gate 13~~ done 2026-11-07; *Always Use HTTPS* is on.
 2. ~~Gate 14~~ done 2026-11-07, except the `/?p=` shortlinks. See
    [Old addresses](#old-addresses--gate-14).
-3. Gate 19 (`wp-19-check-nothing-is-broken`), then gate 20 switches WordPress off.
+3. ~~Gate 19~~ (gate 15 in the runbook's numbering) passed 2026-11-07 — see
+   [Post-launch check](#post-launch-check-gate-15). Next is gate 20, which
+   switches WordPress off.
 4. Workers Builds still does not fire on push; deploy by hand.
+5. **No content editor, by decision.** Paolo, 2026-11-07: code edits are fine
+   for this client, so no Keystatic handover. Once WordPress is off, every text
+   or SEO change is a change to this repo plus a deploy.
 
 ## Images
 
@@ -424,7 +429,8 @@ sitemap <image:image>    41 refs — the addresses Google has indexed for image
 rel=icon, apple-touch-   the favicon is the client's logo, a media-library file
   icon, TileImage
 /favicon.ico redirect    WordPress answers it with a 302 to the Site Icon; there
-                         is no local path left to redirect to, so it is absolute
+                         is no local path left to redirect to, so it is absolute.
+                         Served as a 301 since gate 15, which fails any 302
 ```
 
 **`public/_headers` lost its `/images/*` rule.** The Worker serves no images, so
@@ -1220,6 +1226,7 @@ and wrong to keep, because a copied sitemap describes the WordPress site:
   per custom post type and the Elementor landing-page type has no entries. An
   empty sitemap listed in an index is a Search Console **error** — "Sitemap is
   empty" — not something it quietly ignores. It is no longer emitted or listed.
+  The old address 301s to `/sitemap_index.xml` (gate 15 found it 404ing).
 
 ### lastmod is now the page's own history
 
@@ -1931,8 +1938,9 @@ Faithfully reproduced, not introduced here:
 
 ### Old addresses — gate 14
 
-`public/_redirects` covers only what the live site itself redirects: `/favicon.ico`
-and the no-trailing-slash form of every route. The WordPress-only addresses are
+`public/_redirects` covers what the live site itself redirects — `/favicon.ico`
+and the no-trailing-slash form of every route — plus the old empty
+`/e-landing-page-sitemap.xml`, sent to `/sitemap_index.xml`. The WordPress-only addresses are
 handled at the Cloudflare edge, so they survive WordPress being switched off.
 They are zone Single Redirect rules (`http_request_dynamic_redirect` entrypoint),
 all 301, all scoped to `www.` and the apex so `lp.`, `img.` and `astro.` are
@@ -1958,6 +1966,53 @@ itself, so it cannot loop or touch asset paths.
 rule (the target cannot be computed from the id), and the Free plan allows 10
 Single Redirect rules, 4 of which are used. They land on the home page with a
 200 rather than a 404. Nothing on the site links to them.
+
+### Post-launch check (gate 15)
+
+Run 2026-11-07 against the live domain, not `dist/`:
+
+```bash
+python3 tools/verify/post-launch-check.py . /tmp/gate15
+```
+
+The address list is every `<loc>` and `<image:loc>` in the captured WordPress
+sitemaps (`tools/capture/sitemaps/`), the 110 page images in
+`tools/capture/media_final.json`, all 537 media-library files from the gate 5
+rclone log as `/wp-content/uploads/…`, plus feeds, archives, mixed case, the
+apex and `http://`. Yoast wrote two inline `data:` images into `<image:loc>`;
+they are not addresses and are skipped.
+
+```
+ADDRESS SWEEP
+  addresses in the list .............. 576
+  200 direct ......................... 23
+  301 -> 200 ......................... 553
+  FAILED ............................. 0
+
+LIVE IMAGE CHECK
+  pages + stylesheets fetched ........ 19 + 35
+  image references ................... 624
+    on img.rexdalemobilewash.ca ...... 620
+    local on www ..................... 4     sbi sprite (plugin chrome) + hero LCP derivative, both 200
+    off-host ......................... 0
+  img sample, 2nd fetch .............. 200, cf-cache-status HIT
+  out-of-bucket path ................. 404
+
+LIVE SEO CHECK
+  canonical on the real domain ....... 18 of 18
+  JSON-LD parse ...................... 18 of 18
+  pages noindexed .................... 0
+  sitemap addresses returning 200 .... 18 of 18   renders as a table in Chromium
+  verification tokens ................ 0 on the old site, so 0 to carry
+  GTM-NMTLRJ63 ....................... 19 of 19 pages
+```
+
+The first run failed two addresses, both fixed in `_redirects` and re-swept:
+`/favicon.ico` was a 302 (copied from WordPress; now 301), and
+`/e-landing-page-sitemap.xml` 404'd (now 301 to `/sitemap_index.xml`).
+
+Known and accepted: `/blog-post-title/` still carries WordPress's "log in to
+leave a reply" link to `/wp-login.php`, a 404 on a placeholder page.
 
 ## Pruning
 
