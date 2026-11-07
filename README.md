@@ -87,6 +87,37 @@ config that lists only `astro.` detaches the production site.
 in `.env` (or as a Workers Builds build variable). A build with the test key
 `1x00000000000000000000AA` against the real secret rejects every submission.
 
+### Where the old WordPress site actually lives (gate 16)
+
+Cloudflare only ever carried DNS and the proxy. The WordPress install, its
+database and any WooCommerce or form data are on a **GoDaddy cPanel account**
+(`107.180.56.173`, ARIN `GO-DADDY-COM-LLC`), behind **Sucuri**
+(`192.124.249.17`, ARIN `SUCURI-ARIN-002`, GoDaddy's Website Security). Since
+the cutover nothing on the domain routes there.
+
+Gate 16 is **not done** and cannot be done from Cloudflare. Still open, all in
+that GoDaddy account: export any WooCommerce customers/orders and stored form
+messages for the client, take and test a full backup (mark it possibly
+compromised; see the `fast-cache-32` note below), maintenance mode, then remove
+the site, rotate the hosting and database passwords, and cancel hosting and
+Sucuri.
+
+Six leftover DNS records for that hosting were removed on 2026-11-07, all
+proxied, TTL auto. Re-create them from this list if ever needed:
+
+```
+A      admin.rexdalemobilewash.ca           107.180.56.173                 GoDaddy "Coming Soon" page
+CNAME  www.admin.rexdalemobilewash.ca       rexdalemobilewash.ca
+CNAME  cpanel.rexdalemobilewash.ca          sucuriip.rexdalemobilewash.ca  target never existed: 530
+CNAME  whm.rexdalemobilewash.ca             sucuriip.rexdalemobilewash.ca  target never existed: 530
+CNAME  webdisk.rexdalemobilewash.ca         rexdalemobilewash.ca
+CNAME  webdisk.admin.rexdalemobilewash.ca   rexdalemobilewash.ca
+```
+
+Zone 36 records in, 30 out. Every mail-related record (MX, SPF, the Microsoft
+TXT, `mail.`, `smtp.`, `imap.`, `pop.`, `webmail.`, `email.`, `autodiscover`,
+`lyncdiscover`, `sip`, `msoid`) was left as it was.
+
 > **Workers Builds is connected but is not firing.** Pushes to `main` on
 > 2026-09-04 produced no build: Cloudflare's last automatic deployment is
 > 2026-09-03T18:03, and GitHub shows no check run or commit status for any of
