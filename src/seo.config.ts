@@ -192,7 +192,7 @@ export function shareImage(
 /**
  * Descriptions the live site is missing or has wrong.
  *
- * Only four pages are touched, and each for a stated reason. Every other page
+ * Only seven pages are touched, and each for a stated reason. Every other page
  * keeps Yoast's description exactly as written.
  */
 const DESCRIPTIONS: Record<string, string> = {
@@ -203,6 +203,15 @@ const DESCRIPTIONS: Record<string, string> = {
     'Fast, reliable bulk water delivery across the GTA — construction, ' +
     'landscaping, municipal and industrial. High-capacity tankers, scheduled ' +
     'or on demand.',
+  // These two run past 160 characters on the live site (196 and 208) and are
+  // cut off mid-sentence in results. Shortened using the pages' own wording and
+  // the phone number the pages print; no new claims.
+  buildings:
+    'Rexdale Mobile Wash provides high pressure washing and power scrubbing ' +
+    'for large and small building exteriors and interiors.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc. for mobile pressure washing and ' +
+    'industrial cleaning across the GTA. Call 1 (416) 244-6497.',
   // The four pages below carry no description at all on the live site, so the
   // snippet is whatever Google scrapes — on these four, that is the navigation
   // menu, which is the same on every page.
@@ -336,11 +345,13 @@ const addType = (n: Node, extra: string) => {
 /**
  * The ported Yoast graph, enriched.
  *
- * Purely additive, and deliberately so: every node and every property the live
- * site emits survives byte-for-byte, including the `SearchAction` that points
- * at a WordPress search this site does not have (README: "Known issues carried
- * over" — changing that is the client's call, not this file's). Only keys that
- * are absent are filled in.
+ * Additive, with one exception: every node and every property the live site
+ * emits survives byte-for-byte EXCEPT the WebSite node's `SearchAction`. Yoast
+ * wrote it for WordPress's `/?s=` search; this site has no search, so `/?s=x`
+ * serves the home page and the action advertises a feature that does not
+ * exist (an unsupported sitelinks-searchbox claim). It is dropped; any other
+ * `potentialAction` on that node is kept. Only keys that are absent are
+ * filled in.
  *
  * What it adds:
  *
@@ -385,6 +396,15 @@ export function enrichJsonLd(
       areaServed: BUSINESS.areaServed,
     };
     for (const [k, v] of Object.entries(fill)) if (!(k in org)) org[k] = v;
+  }
+
+  const website = graph.find((n: Node) => typesOf(n).includes('WebSite')) as Node | undefined;
+  if (website && Array.isArray(website.potentialAction)) {
+    const kept = (website.potentialAction as Node[]).filter(
+      (a) => !typesOf(a).includes('SearchAction'),
+    );
+    if (kept.length) website.potentialAction = kept;
+    else delete website.potentialAction;
   }
 
   const webpage = graph.find((n: Node) => typesOf(n).includes('WebPage')) as Node | undefined;

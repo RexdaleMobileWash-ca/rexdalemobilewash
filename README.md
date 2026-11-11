@@ -1953,15 +1953,15 @@ Faithfully reproduced, not introduced here:
 - **`/blog-post-title/` is WordPress placeholder copy** ("What goes into a blog
   post?"). It is in the sitemap, so it is ported rather than dropped; gate 14 may
   prefer a redirect.
-- **The schema.org `SearchAction` points at `/?s={search_term_string}`**, a
-  WordPress search the new site does not have. Left in place — removing it is the
-  client's call. Everything the port *adds* to the structured data is additive
-  and listed under [SEO](#seo); nothing Yoast wrote was removed.
+- **The schema.org `SearchAction` pointed at `/?s={search_term_string}`**, a
+  WordPress search the new site does not have. Since 2026-11-11 it is dropped at
+  render time by `enrichJsonLd` in `src/seo.config.ts`; it is the only thing
+  Yoast wrote that the port removes from the structured data.
 - `robots.txt` is carried over verbatim and still names `/wp-admin/`. Harmless.
   One line was appended: `Sitemap:`, which the live file omits.
-- **Two meta descriptions run past 160 characters** (`/buildings/` at 196,
-  `/contact-us/` at 208) and will be truncated in the results page. The client's
-  own copy; `bin/check-seo.mjs` warns rather than failing on them.
+- **Two meta descriptions ran past 160 characters** (`/buildings/` at 196,
+  `/contact-us/` at 208). Since 2026-11-11 both are overridden in
+  `src/seo.config.ts` with shorter versions built from the pages' own wording.
 
 ## Not done here
 
