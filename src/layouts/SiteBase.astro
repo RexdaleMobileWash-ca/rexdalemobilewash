@@ -17,7 +17,7 @@
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import imageHosts from '../../image-hosts.json';
-import { shareImage, describe, dedupeOg, enrichJsonLd, robotsFor } from '../seo.config';
+import { shareImage, describe, dedupeOg, enrichJsonLd, robotsFor, titleFor } from '../seo.config';
 
 interface Props {
   slug: string;
@@ -46,7 +46,7 @@ interface Props {
 }
 
 const {
-  slug, chrome = 'nicepage', bodyClass, title, canonical,
+  slug, chrome = 'nicepage', bodyClass, title: portedTitle, canonical,
   robots: portedRobots, og: portedOg = [], named = [], jsonld: portedJsonld, vendor, fonts,
   needsNicepage = true,
   hasForm = false,
@@ -54,11 +54,12 @@ const {
   dataLayer, bodyAttrs = {},
 } = Astro.props;
 
-// The four lines below are everything this port adds to the live site's SEO.
+// The lines below are everything this port adds to the live site's SEO.
 // Each one is a pure function of the ported props and src/seo.config.ts; the
 // props themselves are the live site's own metadata and are never edited here.
 // See the comments in src/seo.config.ts for why each addition exists, and
 // bin/check-seo.mjs, which fails the build if any of it stops arriving.
+const title = titleFor(slug, portedTitle);
 const description = describe(slug, Astro.props.description);
 const robots = robotsFor(slug, portedRobots);
 const share = shareImage(slug, portedOg);

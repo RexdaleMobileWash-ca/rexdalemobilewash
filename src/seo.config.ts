@@ -225,6 +225,27 @@ const DESCRIPTIONS: Record<string, string> = {
     'Posts published by admin on the Rexdale Mobile Wash website.',
 };
 
+/**
+ * Titles the live site has wrong.
+ *
+ * Only the home page is touched. Its WordPress title is "Home ~ Rexdale Mobile
+ * Wash Inc.", which spends the most prominent words in the results page (and
+ * the strongest on-page relevance signal for search and paid landing-page
+ * quality) on the word "Home". Replaced with what the page itself says the
+ * business does and where: its own meta description reads "mobile pressure
+ * washing and industrial cleaning services in the GTA". No new claims. Every
+ * other page keeps Yoast's title exactly as written; og:title is left as
+ * ported.
+ */
+const TITLES: Record<string, string> = {
+  home: 'Mobile Pressure Washing in the GTA ~ Rexdale Mobile Wash Inc.',
+};
+
+/** The <title> to render: an override where one exists, else the ported value. */
+export function titleFor(slug: string, ported: string): string {
+  return TITLES[slug] ?? ported;
+}
+
 /** The description to render: an override where one exists, else the ported value. */
 export function describe(slug: string, ported?: string): string | undefined {
   return DESCRIPTIONS[slug] ?? ported;
