@@ -223,6 +223,14 @@ const DESCRIPTIONS: Record<string, string> = {
     'see What We Do — pressure washing and industrial cleaning across the GTA.',
   'author-admin':
     'Posts published by admin on the Rexdale Mobile Wash website.',
+  // These two carry a Yoast description of 196 and 208 characters, which
+  // Google cuts off mid-sentence. Shortened from the same sentences, nothing added.
+  buildings:
+    'Rexdale Mobile Wash provides high pressure washing and power scrubbing ' +
+    'for large and small building exteriors and interiors.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc. for mobile pressure washing and ' +
+    'industrial cleaning across the GTA. Call 1 (416) 244-6497.',
 };
 
 /** The description to render: an override where one exists, else the ported value. */
@@ -389,6 +397,19 @@ export function enrichJsonLd(
 
   const webpage = graph.find((n: Node) => typesOf(n).includes('WebPage')) as Node | undefined;
   if (webpage && PAGE_TYPE[slug]) addType(webpage, PAGE_TYPE[slug]);
+  // Where DESCRIPTIONS overrides the meta description, keep the WebPage node
+  // saying the same thing rather than Yoast's original.
+  if (webpage && slug in DESCRIPTIONS && page.description) webpage.description = page.description;
+
+  // Yoast's sitelinks SearchAction points at WordPress search (/?s=...). This
+  // site is static and has no search: /?s= just returns the home page, so the
+  // action advertises a feature that does not exist. Dropped.
+  const website = graph.find((n: Node) => typesOf(n).includes('WebSite')) as Node | undefined;
+  if (website && Array.isArray(website.potentialAction)) {
+    const kept = website.potentialAction.filter((a: Node) => !typesOf(a).includes('SearchAction'));
+    if (kept.length) website.potentialAction = kept;
+    else delete website.potentialAction;
+  }
 
   const service = SERVICES[slug];
   if (service && org) {
