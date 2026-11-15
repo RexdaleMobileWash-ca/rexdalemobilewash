@@ -192,10 +192,22 @@ export function shareImage(
 /**
  * Descriptions the live site is missing or has wrong.
  *
- * Only four pages are touched, and each for a stated reason. Every other page
+ * Only a handful of pages are touched, and each for a stated reason. Every other page
  * keeps Yoast's description exactly as written.
  */
 const DESCRIPTIONS: Record<string, string> = {
+  // Typos in Yoast's own descriptions, which Google shows word for word in the
+  // snippet and in ads that pull from it. Same sentences, spelling and grammar
+  // fixed, nothing added: home read "a leader dependable mobile pressure
+  // washing ... services" and named the company "Rexdale Mobile Pressure
+  // Washing"; /parking-underground/ read "largest company’s", "What ever" and
+  // "florr surface".
+  home:
+    'Rexdale Mobile Wash is a leading, dependable provider of mobile pressure ' +
+    'washing and industrial cleaning services in the GTA for over 50 years!',
+  'parking-underground':
+    'Let us show you why the largest companies choose us to service their ' +
+    'parking undergrounds. Whatever the floor surface, we will make it shine!',
   // The live page carries /de-icing-service/'s description word for word — a
   // copy-paste in Yoast that leaves two pages competing on the same snippet
   // while saying nothing about bulk water. Replaced with this page's own copy.
