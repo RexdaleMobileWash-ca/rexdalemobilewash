@@ -62,7 +62,9 @@ const {
 const description = describe(slug, Astro.props.description);
 const robots = robotsFor(slug, portedRobots);
 const share = shareImage(slug, portedOg);
-const og = dedupeOg(portedOg);
+const og = dedupeOg(portedOg).map(([property, value]): [string, string] =>
+  [property, property === 'og:description' && description ? description : value],
+);
 const jsonld = enrichJsonLd(portedJsonld, slug, { canonical, description, image: share });
 
 // The favicon is the client's logo, a media-library file, so it is an image like any
