@@ -192,7 +192,7 @@ export function shareImage(
 /**
  * Descriptions the live site is missing or has wrong.
  *
- * Only four pages are touched, and each for a stated reason. Every other page
+ * Only a handful of pages are touched, and each for a stated reason. Every other page
  * keeps Yoast's description exactly as written.
  */
 const DESCRIPTIONS: Record<string, string> = {
@@ -203,6 +203,20 @@ const DESCRIPTIONS: Record<string, string> = {
     'Fast, reliable bulk water delivery across the GTA — construction, ' +
     'landscaping, municipal and industrial. High-capacity tankers, scheduled ' +
     'or on demand.',
+  // The two below run past 160 characters on the live site (196 and 208), so
+  // Google cuts them off mid-sentence and bin/check-seo.mjs warns on both.
+  // Shortened using only the page's own wording and the phone number it shows.
+  buildings:
+    'High pressure washing and power scrubbing for large and small building ' +
+    'exteriors and interiors, from Rexdale Mobile Wash Inc.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc. for mobile pressure washing and ' +
+    'industrial cleaning. Call 1 (416) 244-6497 or send us a message.',
+  // The live description's typos ("company’s", "What ever the florr") fixed;
+  // the wording is otherwise the client's own.
+  'parking-underground':
+    'Let us show you why the largest companies choose us to service their ' +
+    'parking undergrounds. Whatever the floor surface, we will make it shine!',
   // The four pages below carry no description at all on the live site, so the
   // snippet is whatever Google scrapes — on these four, that is the navigation
   // menu, which is the same on every page.
