@@ -210,6 +210,10 @@ def rewrite(text):
     # attribute is inert — but it must not ship a reference to a host with no DNS.
     text = re.sub(r'\sdata-link="https?://(?:www\.)?new\.rexdalemobilewash\.ca[^"]*"', '', text)
     text = static_instagram(text)
+    # The live site's call links are `tel:1 (416) 244-6497` - spaces and
+    # parentheses in a URI, which some dialers and click-to-call trackers reject.
+    # The visible text is untouched; only the href becomes E.164.
+    text = text.replace('href="tel:1 (416) 244-6497"', 'href="tel:+14162446497"')
     # Bootstrap config for WordPress plugins whose JS is not shipped: the CF7 REST
     # root, Smash Balloon's admin-ajax URL, and a Fast Cache loader that also carried
     # a nonce. All three name endpoints that will not exist. The Elementor background
