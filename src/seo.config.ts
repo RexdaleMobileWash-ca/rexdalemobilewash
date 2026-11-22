@@ -192,7 +192,7 @@ export function shareImage(
 /**
  * Descriptions the live site is missing or has wrong.
  *
- * Only four pages are touched, and each for a stated reason. Every other page
+ * Only a handful of pages are touched, and each for a stated reason. Every other page
  * keeps Yoast's description exactly as written.
  */
 const DESCRIPTIONS: Record<string, string> = {
@@ -203,6 +203,27 @@ const DESCRIPTIONS: Record<string, string> = {
     'Fast, reliable bulk water delivery across the GTA — construction, ' +
     'landscaping, municipal and industrial. High-capacity tankers, scheduled ' +
     'or on demand.',
+  // The live descriptions on these two run to 196 and 208 characters, past the
+  // 160 that Google shows, so the snippet is cut off mid-sentence. Shortened
+  // using only the page's own wording and the phone number it displays.
+  buildings:
+    'High pressure washing and power scrubbing for large and small building ' +
+    'exteriors and interiors, from Rexdale Mobile Wash Inc. Call 1 (416) 244-6497.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc. for mobile pressure washing and ' +
+    'industrial cleaning in the GTA. Give us a call: 1 (416) 244-6497.',
+  // Typos in the live descriptions fixed ("a leader dependable", "company’s",
+  // "What ever the florr", "we'll care of"); the wording is otherwise the
+  // client's own, and each stays under 160 characters.
+  home:
+    'Rexdale Mobile Pressure Washing is a leader in dependable mobile pressure ' +
+    'washing and industrial cleaning services in the GTA for over 50 years!',
+  'parking-underground':
+    'Let us show you why the largest companies choose us to service their ' +
+    'parking undergrounds. Whatever the floor surface, we will make it shine!',
+  'storefronts-3':
+    "Curb appeal is everything. We'll take care of the sticky gum and grunge on " +
+    'and around your storefront so you can take care of your customers!',
   // The four pages below carry no description at all on the live site, so the
   // snippet is whatever Google scrapes — on these four, that is the navigation
   // menu, which is the same on every page.
@@ -222,8 +243,30 @@ const DESCRIPTIONS: Record<string, string> = {
     'A placeholder post on the Rexdale Mobile Wash website. For our services, ' +
     'see What We Do — pressure washing and industrial cleaning across the GTA.',
   'author-admin':
-    'Posts published by admin on the Rexdale Mobile Wash website.',
+    'Posts published by admin on the Rexdale Mobile Wash website. For our ' +
+    'services, see What We Do.',
 };
+
+/**
+ * Titles the live site has wrong.
+ *
+ * Only the home page is touched. Its WordPress title is "Home ~ Rexdale Mobile
+ * Wash Inc.", which spends the most prominent words in the results page (and
+ * the strongest on-page relevance signal for search and paid landing-page
+ * quality) on the word "Home". Replaced with what the page itself says the
+ * business does and where: its own meta description reads "mobile pressure
+ * washing and industrial cleaning services in the GTA". No new claims. Every
+ * other page keeps Yoast's title exactly as written; og:title is left as
+ * ported.
+ */
+const TITLES: Record<string, string> = {
+  home: 'Mobile Pressure Washing in the GTA ~ Rexdale Mobile Wash Inc.',
+};
+
+/** The <title> to render: an override where one exists, else the ported value. */
+export function titleFor(slug: string, ported: string): string {
+  return TITLES[slug] ?? ported;
+}
 
 /** The description to render: an override where one exists, else the ported value. */
 export function describe(slug: string, ported?: string): string | undefined {
