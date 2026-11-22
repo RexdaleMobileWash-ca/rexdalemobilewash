@@ -192,7 +192,7 @@ export function shareImage(
 /**
  * Descriptions the live site is missing or has wrong.
  *
- * Only four pages are touched, and each for a stated reason. Every other page
+ * Only a handful of pages are touched, and each for a stated reason. Every other page
  * keeps Yoast's description exactly as written.
  */
 const DESCRIPTIONS: Record<string, string> = {
@@ -222,7 +222,17 @@ const DESCRIPTIONS: Record<string, string> = {
     'A placeholder post on the Rexdale Mobile Wash website. For our services, ' +
     'see What We Do — pressure washing and industrial cleaning across the GTA.',
   'author-admin':
-    'Posts published by admin on the Rexdale Mobile Wash website.',
+    'Posts published by admin on the Rexdale Mobile Wash website. For our ' +
+    'services, see What We Do — pressure washing across the GTA.',
+  // The two below carry Yoast descriptions of 196 and 208 characters, so the
+  // snippet is cut off mid-sentence (bin/check-seo.mjs warns above 160).
+  // Shortened using only what each page itself says.
+  buildings:
+    'High pressure washing and power scrubbing for large and small building ' +
+    'exteriors and interiors — over 50 years of mobile pressure washing.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc., 41 Shaft Rd, Etobicoke, ON M9W 4M3. ' +
+    'Give us a call at 1 (416) 244-6497 or send us an email.',
 };
 
 /** The description to render: an override where one exists, else the ported value. */
