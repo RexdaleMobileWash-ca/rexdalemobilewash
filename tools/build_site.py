@@ -224,7 +224,39 @@ def rewrite(text):
                  'https://rexdalemobilewash.ca',      'http://rexdalemobilewash.ca'):
         text = text.replace(host + '/', '/').replace(host + '"', '/"')
     text = wire_contact_form(text)
+    text = dialable_tel(text)
+    text = drop_login_link(text)
     return text
+
+def dialable_tel(text):
+    """Rewrite every tel: href to E.164 (tel:+14162446497).
+
+    The live markup writes the number as `tel:1 (416) 244-6497` — spaces and
+    parentheses inside a URI, which RFC 3966 does not allow. Some dialers and
+    click-to-call handlers cope; others drop the call or dial a mangled number,
+    and the click-to-call link is this site's main conversion. Only the href
+    changes: the visible text stays exactly as the client wrote it. North
+    American numbers only (10 digits, or 11 starting with 1); anything else is
+    left alone rather than guessed at.
+    """
+    def fix(m):
+        digits = re.sub(r'\D', '', m.group(2))
+        if len(digits) == 10:
+            digits = '1' + digits
+        if len(digits) != 11 or not digits.startswith('1'):
+            return m.group(0)
+        return f'{m.group(1)}tel:+{digits}{m.group(3)}'
+    return re.sub(r'(href=")tel:([^"#]*)(")', fix, text)
+
+def drop_login_link(text):
+    """Unlink WordPress's comment-form "logged in" link.
+
+    /blog-post-title/ carries WordPress's "You must be logged in to post a
+    comment" notice, linking /wp-login.php — an endpoint this site does not
+    have, so it is a broken internal link (404). The sentence stays; only the
+    dead anchor goes.
+    """
+    return re.sub(r'<a href="/wp-login\.php[^"]*">([^<]*)</a>', r'\1', text)
 
 # With the trailing slash. Astro's `trailingSlash: 'always'` answers the unslashed
 # form with a 308 to this one, and Cloudflare's own auto-trailing-slash asset handling
