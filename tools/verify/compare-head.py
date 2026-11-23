@@ -95,6 +95,9 @@ DESC_OVERRIDDEN = {
     '/lookbook/',               # live has none
     '/blog-post-title/',        # live has none
     '/author/admin/',           # live has none
+    '/buildings/',              # live is 196 chars, truncated in results
+    '/contact-us/',             # live is 208 chars, truncated in results
+    '/parking-underground/',    # live has three typos in the snippet
 }
 
 # Pages the port takes OUT of the index that the live site leaves in. Read from
@@ -199,7 +202,10 @@ def main():
             bad += 1
             print(f'  FAIL  {r:<28} {"live" if L is None else "port"} returned no <head>')
             continue
-        is_desc = lambda t: t.startswith('<meta name="description"')
+        # og:description follows an overridden description (syncOgDescription
+        # in src/seo.config.ts), so it is excused on exactly the same routes.
+        is_desc = lambda t: (t.startswith('<meta name="description"')
+                             or t.startswith('<meta property="og:description"'))
         is_robots = lambda t: t.startswith('<meta name="robots"')
         drops = []
         if r in DESC_OVERRIDDEN:

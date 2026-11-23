@@ -115,6 +115,10 @@ def main():
            f'/favicon.ico  {FAVICON}  301', '',
            '# The old sitemap index listed an empty Elementor landing-page sitemap.',
            '/e-landing-page-sitemap.xml  /sitemap_index.xml  301', '',
+           '# /sitemap.xml is where crawlers and SEO tools look first. The index is',
+           '# Yoast-named (/sitemap_index.xml, as robots.txt says); point the',
+           '# conventional name at it rather than answering 404.',
+           '/sitemap.xml  /sitemap_index.xml  301', '',
            "# Trailing slash: the live site answers 301 here. Cloudflare's own",
            '# auto-trailing-slash handling answers 307, which passes no ranking signal.']
     red += [f'{u.rstrip("/")}  {u}  301' for u in slashed]

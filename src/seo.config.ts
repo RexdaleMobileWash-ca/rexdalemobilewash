@@ -223,11 +223,39 @@ const DESCRIPTIONS: Record<string, string> = {
     'see What We Do — pressure washing and industrial cleaning across the GTA.',
   'author-admin':
     'Posts published by admin on the Rexdale Mobile Wash website.',
+  // The two below run past 160 characters on the live site (196 and 208), so
+  // Google cuts them mid-sentence. Each is shortened from the page's own copy;
+  // no claim is added that the page does not already make.
+  buildings:
+    'Rexdale Mobile Wash provides high pressure washing and power scrubbing ' +
+    'for building exteriors and interiors, big or small.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc., 41 Shaft Rd, Etobicoke, ON M9W 4M3. ' +
+    'Call 1 (416) 244-6497 or send us an email.',
+  // Live copy reads "the largest company’s choose us … What ever the florr
+  // surface" — three typos in the snippet searchers see. Same sentence, spelled.
+  'parking-underground':
+    'Let us show you why the largest companies choose us to service their ' +
+    'parking undergrounds. Whatever the floor surface, we will make it shine!',
 };
 
 /** The description to render: an override where one exists, else the ported value. */
 export function describe(slug: string, ported?: string): string | undefined {
   return DESCRIPTIONS[slug] ?? ported;
+}
+
+/**
+ * Keep og:description in step with an overridden meta description.
+ *
+ * Without this an override fixes the search snippet but the share card keeps
+ * the old text (or, where Yoast wrote none, Nicepage's scraped page body).
+ * Only pages with an override in DESCRIPTIONS change; every other page's Open
+ * Graph is returned untouched. Run it after dedupeOg, so there is one value.
+ */
+export function syncOgDescription(slug: string, og: [string, string][]): [string, string][] {
+  const d = DESCRIPTIONS[slug];
+  if (!d) return og;
+  return og.map(([p, c]) => (p === 'og:description' ? [p, d] : [p, c]));
 }
 
 /**
