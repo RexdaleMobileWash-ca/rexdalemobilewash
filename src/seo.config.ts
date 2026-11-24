@@ -223,11 +223,60 @@ const DESCRIPTIONS: Record<string, string> = {
     'see What We Do — pressure washing and industrial cleaning across the GTA.',
   'author-admin':
     'Posts published by admin on the Rexdale Mobile Wash website.',
+  // The two below run past 160 characters on the live site (196 and 208), so
+  // Google cuts them mid-sentence. Each is shortened from the page's own copy;
+  // no claim is added that the page does not already make.
+  buildings:
+    'Rexdale Mobile Wash provides high pressure washing and power scrubbing ' +
+    'for building exteriors and interiors, big or small.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc., 41 Shaft Rd, Etobicoke, ON M9W 4M3. ' +
+    'Call 1 (416) 244-6497 or send us an email.',
+  // Live copy reads "the largest company’s choose us … What ever the florr
+  // surface" — three typos in the snippet searchers see. Same sentence, spelled.
+  'parking-underground':
+    'Let us show you why the largest companies choose us to service their ' +
+    'parking undergrounds. Whatever the floor surface, we will make it shine!',
 };
+
+/**
+ * Titles the live site has wrong.
+ *
+ * Only the home page is touched. Its WordPress title is "Home ~ Rexdale Mobile
+ * Wash Inc.", which spends the most prominent words on the results page (and
+ * the strongest on-page relevance signal for search and paid landing-page
+ * quality) on the word "Home". Replaced with what the page itself says the
+ * business does and where: its own meta description reads "mobile pressure
+ * washing and industrial cleaning services in the GTA". No new claims. Every
+ * other page keeps Yoast's title exactly as written, and og:title is left as
+ * ported. First proposed in #18; carried here so one PR holds the whole pass.
+ */
+const TITLES: Record<string, string> = {
+  home: 'Mobile Pressure Washing in the GTA ~ Rexdale Mobile Wash Inc.',
+};
+
+/** The <title> to render: an override where one exists, else the ported value. */
+export function titleFor(slug: string, ported: string): string {
+  return TITLES[slug] ?? ported;
+}
 
 /** The description to render: an override where one exists, else the ported value. */
 export function describe(slug: string, ported?: string): string | undefined {
   return DESCRIPTIONS[slug] ?? ported;
+}
+
+/**
+ * Keep og:description in step with an overridden meta description.
+ *
+ * Without this an override fixes the search snippet but the share card keeps
+ * the old text (or, where Yoast wrote none, Nicepage's scraped page body).
+ * Only pages with an override in DESCRIPTIONS change; every other page's Open
+ * Graph is returned untouched. Run it after dedupeOg, so there is one value.
+ */
+export function syncOgDescription(slug: string, og: [string, string][]): [string, string][] {
+  const d = DESCRIPTIONS[slug];
+  if (!d) return og;
+  return og.map(([p, c]) => (p === 'og:description' ? [p, d] : [p, c]));
 }
 
 /**
