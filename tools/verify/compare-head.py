@@ -100,6 +100,10 @@ DESC_OVERRIDDEN = {
     '/parking-underground/',    # live has three typos in the snippet
 }
 
+# The one page whose <title> the port rewrites. See TITLES in src/seo.config.ts:
+# the live home title leads with the word "Home".
+TITLE_OVERRIDDEN = {'/'}
+
 # Pages the port takes OUT of the index that the live site leaves in. Read from
 # seo-noindex.json rather than listed again here, so this tool and the two things
 # that act on the list cannot drift apart. The routes are derived from the slugs
@@ -207,9 +211,12 @@ def main():
         is_desc = lambda t: (t.startswith('<meta name="description"')
                              or t.startswith('<meta property="og:description"'))
         is_robots = lambda t: t.startswith('<meta name="robots"')
+        is_title = lambda t: t.startswith('<title>')
         drops = []
         if r in DESC_OVERRIDDEN:
             drops.append(is_desc)
+        if r in TITLE_OVERRIDDEN:
+            drops.append(is_title)
         if r in ROBOTS_OVERRIDDEN:
             # Both sides are dropped, not just the port's: the live value is
             # `index, follow` and the port's is `noindex, follow`, so leaving
