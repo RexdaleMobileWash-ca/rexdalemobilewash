@@ -223,7 +223,49 @@ const DESCRIPTIONS: Record<string, string> = {
     'see What We Do — pressure washing and industrial cleaning across the GTA.',
   'author-admin':
     'Posts published by admin on the Rexdale Mobile Wash website.',
+  // The two below are the live site's own copy, but at 196 and 208 characters
+  // Google cuts them off mid-sentence. Shortened to fit (bin/check-seo.mjs warns
+  // above 160), using only facts printed on each page.
+  buildings:
+    'Mobile high-pressure washing and power scrubbing for large and small ' +
+    'building exteriors and interiors, from Rexdale Mobile Wash.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc., 41 Shaft Rd, Etobicoke, ON. Call ' +
+    '1 (416) 244-6497 or email us about mobile pressure washing.',
 };
+
+/**
+ * Titles the live site has wrong.
+ *
+ * The home page is titled "Home ~ Rexdale Mobile Wash Inc.", which spends the
+ * most valuable words in the result on "Home" and never says what the business
+ * does or where. Replaced with the service and area the page itself states
+ * ("mobile pressure washing ... in the GTA"). Every other page keeps its title.
+ */
+const TITLES: Record<string, string> = {
+  home: 'Mobile Pressure Washing in the GTA ~ Rexdale Mobile Wash Inc.',
+};
+
+/** The title to render: an override where one exists, else the ported value. */
+export function titleFor(slug: string, ported: string): string {
+  return TITLES[slug] ?? ported;
+}
+
+/**
+ * Keep og:title / og:description in step with an overridden title or
+ * description, so a share card never says something different from the
+ * search snippet. Pages without an override are returned untouched.
+ */
+export function syncOg(slug: string, og: [string, string][]): [string, string][] {
+  const t = TITLES[slug];
+  const d = DESCRIPTIONS[slug];
+  if (!t && !d) return og;
+  return og.map(([p, c]) => {
+    if (p === 'og:title' && t) return [p, t];
+    if (p === 'og:description' && d) return [p, d];
+    return [p, c];
+  });
+}
 
 /** The description to render: an override where one exists, else the ported value. */
 export function describe(slug: string, ported?: string): string | undefined {
