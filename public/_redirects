@@ -11,6 +11,10 @@
 # The old sitemap index listed an empty Elementor landing-page sitemap.
 /e-landing-page-sitemap.xml  /sitemap_index.xml  301
 
+# /sitemap.xml is the conventional address crawlers and SEO tools try
+# first; the index is Yoast-named, so point it there instead of a 404.
+/sitemap.xml  /sitemap_index.xml  301
+
 # Trailing slash: the live site answers 301 here. Cloudflare's own
 # auto-trailing-slash handling answers 307, which passes no ranking signal.
 /about-us  /about-us/  301

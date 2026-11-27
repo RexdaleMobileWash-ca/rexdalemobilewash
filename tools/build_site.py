@@ -224,6 +224,19 @@ def rewrite(text):
                  'https://rexdalemobilewash.ca',      'http://rexdalemobilewash.ca'):
         text = text.replace(host + '/', '/').replace(host + '"', '/"')
     text = wire_contact_form(text)
+    # The live markup writes the click-to-call href as `tel:1 (416) 244-6497`:
+    # spaces and parentheses inside a URI, which RFC 3966 does not allow and some
+    # dialers mis-handle. Only the href is normalised to E.164; the visible
+    # number stays exactly as the client wrote it.
+    text = text.replace('href="tel:1 (416) 244-6497"', 'href="tel:+14162446497"')
+    # WordPress's comment notice on /blog-post-title/ links /wp-login.php, which
+    # this site does not have (404). Keep the sentence, drop the dead anchor.
+    text = re.sub(r'<a href="/wp-login\.php[^"]*">([^<]*)</a>', r'\1', text)
+    # mailto: subjects are written with raw spaces ("?subject=Email from ..."),
+    # which RFC 6068 requires to be percent-encoded. Most mail clients cope, but
+    # some truncate the subject at the first space. Encode the spaces only.
+    text = re.sub(r'(href="mailto:[^"?]*\?subject=)([^"]*)"',
+                  lambda m: m.group(1) + m.group(2).replace(' ', '%20') + '"', text)
     return text
 
 # With the trailing slash. Astro's `trailingSlash: 'always'` answers the unslashed
