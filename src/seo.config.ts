@@ -192,10 +192,25 @@ export function shareImage(
 /**
  * Descriptions the live site is missing or has wrong.
  *
- * Only four pages are touched, and each for a stated reason. Every other page
+ * Only a handful of pages are touched, and each for a stated reason. Every other page
  * keeps Yoast's description exactly as written.
  */
 const DESCRIPTIONS: Record<string, string> = {
+  // Typos in Yoast's own descriptions, which Google shows word for word in the
+  // snippet and in ads that pull from it. Same sentences, spelling and grammar
+  // fixed, nothing added: home read "a leader dependable mobile pressure
+  // washing ... services" and named the company "Rexdale Mobile Pressure
+  // Washing"; /parking-underground/ read "largest company’s", "What ever" and
+  // "florr surface"; /storefronts-3/ read "we'll care of" (missing "take").
+  home:
+    'Rexdale Mobile Wash is a leading, dependable provider of mobile pressure ' +
+    'washing and industrial cleaning services in the GTA for over 50 years!',
+  'parking-underground':
+    'Let us show you why the largest companies choose us to service their ' +
+    'parking undergrounds. Whatever the floor surface, we will make it shine!',
+  'storefronts-3':
+    "Curb appeal is everything. We'll take care of the sticky gum and grunge " +
+    'on and around your storefront so you can take care of your customers!',
   // The live page carries /de-icing-service/'s description word for word — a
   // copy-paste in Yoast that leaves two pages competing on the same snippet
   // while saying nothing about bulk water. Replaced with this page's own copy.
@@ -223,7 +238,49 @@ const DESCRIPTIONS: Record<string, string> = {
     'see What We Do — pressure washing and industrial cleaning across the GTA.',
   'author-admin':
     'Posts published by admin on the Rexdale Mobile Wash website.',
+  // The two below are the live site's own copy, but at 196 and 208 characters
+  // Google cuts them off mid-sentence. Shortened to fit (bin/check-seo.mjs warns
+  // above 160), using only facts printed on each page.
+  buildings:
+    'Mobile high-pressure washing and power scrubbing for large and small ' +
+    'building exteriors and interiors, from Rexdale Mobile Wash.',
+  'contact-us':
+    'Contact Rexdale Mobile Wash Inc., 41 Shaft Rd, Etobicoke, ON. Call ' +
+    '1 (416) 244-6497 or email us about mobile pressure washing.',
 };
+
+/**
+ * Titles the live site has wrong.
+ *
+ * The home page is titled "Home ~ Rexdale Mobile Wash Inc.", which spends the
+ * most valuable words in the result on "Home" and never says what the business
+ * does or where. Replaced with the service and area the page itself states
+ * ("mobile pressure washing ... in the GTA"). Every other page keeps its title.
+ */
+const TITLES: Record<string, string> = {
+  home: 'Mobile Pressure Washing in the GTA ~ Rexdale Mobile Wash Inc.',
+};
+
+/** The title to render: an override where one exists, else the ported value. */
+export function titleFor(slug: string, ported: string): string {
+  return TITLES[slug] ?? ported;
+}
+
+/**
+ * Keep og:title / og:description in step with an overridden title or
+ * description, so a share card never says something different from the
+ * search snippet. Pages without an override are returned untouched.
+ */
+export function syncOg(slug: string, og: [string, string][]): [string, string][] {
+  const t = TITLES[slug];
+  const d = DESCRIPTIONS[slug];
+  if (!t && !d) return og;
+  return og.map(([p, c]) => {
+    if (p === 'og:title' && t) return [p, t];
+    if (p === 'og:description' && d) return [p, d];
+    return [p, c];
+  });
+}
 
 /** The description to render: an override where one exists, else the ported value. */
 export function describe(slug: string, ported?: string): string | undefined {
