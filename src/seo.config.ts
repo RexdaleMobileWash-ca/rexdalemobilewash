@@ -160,7 +160,9 @@ const SHARE: Record<string, Share> = {
 const PORTED_SHARE: Record<string, Omit<Share, 'url'>> = {
   [`${IMG}/2020/12/image-1.jpg`]: {
     width: 1193, height: 1800,
-    alt: 'Pressure washing work from the Rexdale Mobile Wash lookbook',
+    // The lookbook images are the theme's demo gallery (fashion stock
+    // photography), not the company's work, so the alt describes the photo.
+    alt: 'A person in a red cap and grey sweater facing a painted brick wall',
   },
   [`${IMG}/2020/12/logoclear-1.png`]: {
     width: 1142, height: 264,
@@ -206,9 +208,12 @@ const DESCRIPTIONS: Record<string, string> = {
   // The four pages below carry no description at all on the live site, so the
   // snippet is whatever Google scrapes — on these four, that is the navigation
   // menu, which is the same on every page.
+  // /lookbook/ is the theme's demo gallery: eight fashion stock photos, no
+  // pressure-washing work. Described honestly, as the two placeholder pages
+  // below are; whether it should stay published is the client's call.
   lookbook:
-    'A gallery of pressure washing, graffiti removal and industrial cleaning ' +
-    'work by Rexdale Mobile Wash across the Greater Toronto Area.',
+    'The Lookbook page on the Rexdale Mobile Wash website. For our mobile ' +
+    'pressure washing and industrial cleaning across the GTA, see What We Do.',
   '404':
     'That page could not be found. Rexdale Mobile Wash provides mobile ' +
     'pressure washing and industrial cleaning across the GTA — call ' +
